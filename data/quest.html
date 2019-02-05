@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+    <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="viewport" content="width=device-width, height=device-height, user-scalable=no, initial-scale=1, maximum-scale=1">
+    <Title>Welcome to MicJack</Title>
+        <style>
+             @font-face {
+                font-family: 'IchigoJam-1.2';
+                src: url('IchigoJam-for-Display-1.2.ttf') format('truetype');
+            }
+            body {
+                -webkit-touch-callout: none; /* Chrome all / Safari all */
+                -moz-touch-callout: none;     /* Firefox all */
+                -ms-touch-callout: none;      /* IE 10+ */
+
+                -webkit-user-select: none;  /* Chrome all / Safari all */
+                -moz-user-select: none;     /* Firefox all */
+                -ms-user-select: none;      /* IE 10+ */
+            }
+            .btn_a, .btn_bg, .btn_br, .btn_c {
+                font-size:32px;
+                font-family: 'IchigoJam-1.2';
+                width: 100px;
+                height: 100px;
+                background: #FFF;
+                background: -moz-linear-gradient(top,#FFF 0%,#DDD);
+                background: -webkit-gradient(linear, left top, left bottom, from(#FFF), to(#DDD));
+                border: 1px solid #2a82a3;
+                border-radius: 70px;
+                -moz-border-radius: 70px;
+                -webkit-border-radius: 70px;
+                color: #2a82a3;
+                display: block;
+                text-align: center;
+                transition: background-color 0.5s ease-in;
+                -webkit-transition: background-color 0.5s ease-in;
+            }
+            .btn_bg, .btn_br {
+                font-size:28px;
+                width: 90px;
+                height: 90px;
+                color: #00AA00;
+            }
+            .btn_br {
+                color: #DD0000;
+            }
+            .btn_c {
+                font-size:24px;
+                width: 180px;
+                height: 60px;
+                color: #AAAAAA;
+            }
+
+        </style>
+        <script>
+            //Top Page
+            function toRoot() {
+                location.href="index.html";
+            }
+            
+            function jump(url) {
+                location.href=url;
+            }
+            function led(n) {
+                var url="/ijcmd/LED"+n
+                var xhr = new XMLHttpRequest();
+                xhr.open("GET", url, true);
+                xhr.send();
+                //console.log(n);
+            }
+            function sendKey(bt){
+                var code=bt.value.charCodeAt(0);//.toString(16);
+                var url="/ijkey/"+code
+                var xhr = new XMLHttpRequest();
+                xhr.open("GET", url, true);
+                xhr.send();
+                console.log(code+" ("+code.toString(16).toUpperCase()+")");
+                //document.getElementById("result").textContent=code+" ("+code.toString(16).toUpperCase()+")";
+            }
+            function sendCmd(cmd){
+                //cmd = document.getElementById(mjc).value;
+                var url=cmd
+                var xhr = new XMLHttpRequest();
+                xhr.open("GET", url, true);
+                xhr.send();
+                //alert("値は「" + url + "」です");
+            }
+        </script>
+    </head>
+    <body>
+        <div>
+            <table border=0>
+                <tr>
+                    <td><button class='ijFcSw' onClick='toRoot()'>&#127968;</button> </td>
+                    <td>Mode:</td>
+                    <td><button value="UART" onclick="sendCmd('/mjcmd/MJ UART')">UART</button></td>
+                    <td><button value="KBD" onclick="sendCmd('/mjcmd/MJ KBD')">Keyboard</button></td>
+                </tr>            
+            </table>
+            <p></p>
+            <hr>
+            <p></p>
+            <table border=0 width=100%>
+               <tr>
+                    <td align="right" rowspan=3>
+                    <button class="btn_a" value='&#28' onClick='sendKey(this)'>Ǡ</button>
+                    </td>
+                    <td align="center" rowspan=3>
+                    <button class="btn_a" value='&#30' onClick='sendKey(this)'>Ǣ</button>
+                        <p> </p>
+                    <button class="btn_a" value='&#31' onClick='sendKey(this)'>ǣ</button>
+                    </td>
+                    <td align="left" rowspan=3>
+                        <button class="btn_a" value='&#29' onClick='sendKey(this)'>ǡ</button>
+                    </td>
+                    <td align="center" valign="middle">
+                        <p></p>
+                    </td>
+                    <td align="center" valign="middle">
+                        <p></p>
+                    </td>
+                </tr>
+                <tr>
+                    <td align="center" valign="middle">
+                    <button class="btn_br" value='&#27' onClick='sendKey(this)'>č</button>
+                    </td>
+                    <td align="center" valign="middle">
+                    <button class="btn_bg" value='&#10' onClick='sendKey(this)'>Ċ</button>
+                    </td>
+
+                </tr>
+                <tr>
+                    <td align="center" colspan="2">
+                    <button class="btn_c" value='&#32' onClick='sendKey(this)'>space</button>
+                    </td>
+                </tr>
+            </table>
+            
+        </div>
+        
+    </body>
+</html>
