@@ -6,6 +6,7 @@
  *  CC BY Michio Ono. http://ijutilities.micutil.com
  *  
  *  *Version Information
+ *  2020/ 3/22  ver 1.1.0b2 UDP, TJ, FP (200307:1.1.0b1)
  *  2018/10/10  ver 1.0.1b2
  *  2018/10/ 8  ver 1.0.1b1
  *  2018/ 9/ 2  ver 1.0.0b1, 9/3 b2, 9/9 b5
@@ -26,8 +27,9 @@
 #include <FS.h>
 #include <ESP8266mDNS.h>
 
-const String MicJackVer="MicJack-1.0.1b1";
-const String MJVer="MixJuice-1.2.2";
+const String MicJackVer="MicJack-1.1.0b1";
+const String TelloJackVer="TelloJack-1.0.0b1";
+const String MJVer="MixJuice-1.3.0";
 const int sleepTimeSec = 60;
 
 String inStr = ""; // a string to hold incoming data
@@ -35,7 +37,12 @@ boolean stringComplete = false;  // whether the string is complete
 
 IPAddress staIP; // the IP address of your shield
 
-struct APCONFIG {
+typedef struct sspw {
+  char ssid[32];
+  char pass[32];
+};
+
+typedef struct APCONFIG {
   char ssid[32];
   char pass[32];
   char homepage[32];
@@ -43,6 +50,10 @@ struct APCONFIG {
   char softap_pass[32];
   bool kbd;
   bool useHostKbdCmd;
+  bool showForce;//show the result of tello command?;
+  bool autoWait;//true=don't wait, false=wait
+  bool reserve[30];
+  sspw sp[8];
 };
 APCONFIG apcbuf;
 
@@ -90,22 +101,32 @@ String rootPage;
 const char* mjname = "micjack";
 
 /*** UDP ***/
-//#define supportUDP
+#define supportUDP
 #ifdef supportUDP
-  #define initStartUDP
+  //#define initStartUDP
   #include <WiFiUdp.h>
   WiFiUDP udp;
-  unsigned int UDP_LocalPort = 10000;
+  unsigned int UDP_LocalPort = 20001;//10000;
+  unsigned int UDP_Read_Port = UDP_LocalPort;
+  IPAddress UDP_Write_IPAddress;
+  unsigned int UDP_Write_Port;
   //unsigned char UDP_Minimum_Packet = 1;
   boolean isUDP=false;
-  const int UDP_PACKET_SIZE = 256;
-  char packetBuffer[UDP_PACKET_SIZE];
+  const int UDP_PACKET_SIZE = UDP_TX_PACKET_MAX_SIZE;
+  char packetBuffer[UDP_PACKET_SIZE+1];
+#endif
+
+#define supportTELLO
+#ifdef supportTELLO
+#include "tello.h"
+extern bool showForce;
+extern bool showRes;
 #endif
 
 /*** SoftAP ***/
 #define initStartSoftAP  
-const char default_softap_ssid[] = "MicJack";
-const char default_softap_pass[] = "abcd1234";
+//const char default_softap_ssid[] = "MicJack";
+const char default_softap_pass[] = "";//"abcd1234";
 IPAddress mySoftAPIP;
 
 /*** ArduinoOTA ***/
@@ -292,6 +313,7 @@ void setup() {
   Serial.println("");
   Serial.println("'"+MJVer);
   Serial.println("'"+MicJackVer);
+  Serial.println("'"+TelloJackVer);
   Serial.println("'CC BY Michio Ono");
   Serial.println("");
 
@@ -319,9 +341,13 @@ void setup() {
   MJ_APLAPC();
 
   #ifdef initStartUDP
-    udpStart();
+    udpStart(UDP_Read_Port);
   #endif
 
+  #ifdef supportTELLO
+    tello_setup();
+  #endif
+  
   #ifdef supportOTA
     OTAStart();
   #endif
@@ -405,19 +431,6 @@ void serverStart() {
   isServer=true;  
   
 }
-
-/************************************
- * udpStart
- * USP開始
- */
-#ifdef supportUDP
-void udpStart() {
-  udp.begin(UDP_LocalPort);
-  delay(500);
-  Serial.println("'UDP started...");
-  isUDP=true;
-}
-#endif
 
 /************************************
  * OTAStart
@@ -515,7 +528,8 @@ void loop() {
   server.handleClient();
 
   #ifdef supportUDP
-    if(isUDP) MJ_UDP_Packet();
+    if(isUDP) MJ_UDP_ReadPacket();
+    tello_loop();
   #endif
 
   // Wait a bit before scanning again
@@ -574,16 +588,16 @@ void doMixJuice() {
 
     }
     
-  } else if(cs.startsWith("MJ APL")) {
+  } else if(cs.startsWith("MJ APL")||cs.startsWith("TJ APL")||cs.startsWith("FP APL")) {
     /*** WiFiリスト ***/ MJ_APL();
       
-  } else if(cs.startsWith("MJ APS")) {
+  } else if(cs.startsWith("MJ APS")||cs.startsWith("TJ APS")||cs.startsWith("FP APS")) {
    /*** 接続確認 ***/ MJ_APS();
     
-  } else if(cs.startsWith("MJ APD")) {
+  } else if(cs.startsWith("MJ APD")||cs.startsWith("TJ APD")||cs.startsWith("FP APD")) {
     /*** 切断 ***/ MJ_APD();
     
-  } else if(cs.startsWith("MJ APC")) {
+  } else if(cs.startsWith("MJ APC")||cs.startsWith("TJ APC")||cs.startsWith("FP APC")) {
     /*** 接続 ***/
     MJ_APC(inStr.substring(7));
     
@@ -638,6 +652,11 @@ void doMixJuice() {
     // Verで、エラー表示で、MixJuiceのバージョンを表示
     // MJVerで、MicJackのバージョンを表示
     
+  } else if(cs.startsWith("MJ TJVER")||cs.startsWith("TJ VER")) {
+    /*** バージョン ***/ Serial.println("'"+TelloJackVer);
+    // Verで、エラー表示で、MixJuiceのバージョンを表示
+    // TelloJackのバージョンを表示
+    
   } else if(cs.startsWith("MJ LIP")) {
     /*** Local IP ***/ Serial.println(staIP);
     
@@ -664,6 +683,18 @@ void doMixJuice() {
   } else if(cs.startsWith("MJ PWD")) {
     /*** PASS ***/ SetPASS(inStr.substring(7));
   
+  } else if(cs.startsWith("MJ RGA ")||cs.startsWith("TJ RGA ")) { //# SSID PWD
+    /*** Registration of ssid ***/ RegistSSID(inStr.substring(7));
+  
+  } else if(cs.startsWith("MJ RGC ")||cs.startsWith("TJ RGC ")) { //#
+    /*** Connect ssid ***/ MJ_ConnectNum(inStr.substring(7));
+
+  } else if(cs.startsWith("MJ RGL")||cs.startsWith("TJ RGL")) {
+    /*** Show ssid List***/ MJ_RegistList();
+
+  } else if(cs.startsWith("MJ RGD ")||cs.startsWith("TJ RGD ")) { //#
+    /*** Connect ssid ***/ MJ_DeleteReg(inStr.substring(7));
+
   } else if(cs.startsWith("MJ GETHOME")) {
     /*** HOME ***/ SetHome(inStr.substring(11),false);
   
@@ -714,12 +745,64 @@ void doMixJuice() {
 //   } else if(cs.startsWith("MJ SERVER") || cs.startsWith("MJ SVR")) {
 //     /*** Sever Start ***/ serverStart();
 
-  #ifdef supporrtUDP
+  #ifdef supportUDP
+  } else if(cs.startsWith("MJ UDP START")) {
+    /*** UDP Start ***/ MJ_UDP_Start(inStr.substring(13));
+
+  } else if(cs.startsWith("MJ UDP STOP")) {
+    /*** UDP Start ***/ if(isUDP) {udp.stop();isUDP=false;}
+
+  } else if(cs.startsWith("MJ UDP MSG")) {
+    /*** UDP Write ***/ MJ_UDP_Write(inStr.substring(11));
+    
   } else if(cs.startsWith("MJ UDP")) {
-    /*** UDP Start ***/ MJ_UDP_Start(inStr.substring(7));
-  #endif
+    /*** UDP Write ***/ MJ_UDP_WritePacket(inStr.substring(7));
   
-  } else if(cs.startsWith("MJ ")) {
+  #ifdef supportTELLO
+  } else if(cs.startsWith("TJ INIT")||cs.startsWith("FP INIT")||
+            cs.startsWith("TJ START")||cs.startsWith("FP START")) {
+    /*** UDP Start ***/ tello_udp_start(0,true);
+
+  } else if(cs.startsWith("TJ CLOSE")||cs.startsWith("FP CLOSE")) {
+    /*** Tello Command Start ***/ tello_udp_stop(0);
+
+  } else if(cs.startsWith("TJ BREAK")||cs.startsWith("FP BREAK")) {
+    /*** Tello Command Start ***/ Break_Tello();
+
+  } else if(cs.startsWith("TJ STATE")||cs.startsWith("FP STATE")) {
+    /*** Tello State Start ***/ tello_udp_start(1,false);
+
+  } else if(cs.startsWith("TJ VIDEO")||cs.startsWith("FP VIDEO")) {
+    /*** Tello Video Start ***/ tello_udp_start(2,false);
+
+  //--------------------
+  //Queue control mode
+  //--------------------
+  
+  } else if(cs.startsWith("TJ Q")||cs.startsWith("FP Q")) {
+    /*** FP Direct Command ***/ Tello_Queue_Command(inStr.substring(4));
+
+  //--------------------------------
+  // Command and Radio control mode
+  //--------------------------------
+      
+  } else if(cs.startsWith("TJ RESON")||cs.startsWith("FP RESON")) {
+    /*** force show result ***/ showForce=true; SaveAPConfig();
+
+  } else if(cs.startsWith("TJ RESOFF")||cs.startsWith("FP RESOFF")) {
+    /*** force show result ***/ showForce=false; SaveAPConfig();
+
+  } else if(cs.startsWith("TJ S ")||cs.startsWith("FP S ")) {
+    /*** FP Direct Command ***/ showRes=true;
+     Tello_Direct_Command(inStr.substring(5));
+
+  } else if(cs.startsWith("TJ ")||cs.startsWith("FP ")) {
+    /*** FP Direct Command ***/ Tello_Direct_Command(inStr.substring(3));
+
+  #endif //supportTELLO 
+  #endif //supportUDP
+  
+  } else if(cs.startsWith("MJ ")||cs.startsWith("TJ ")||cs.startsWith("FP ")) {
     /*** NG ***/ Serial.println("'NG: "+MJVer);
   }
 
@@ -751,7 +834,7 @@ void MJ_APC(String ssidpwd) {
     if(lastPASS.length()>0) {
       tss=ssidpwd; tps=lastPASS;
     } else {
-      return;
+      tss=ssidpwd.substring(0,ps);//return;
     }
   } else {
     tss=ssidpwd.substring(0,ps);
@@ -763,7 +846,11 @@ void MJ_APC(String ssidpwd) {
   
   //Serial.println("'"+tss);
   //Serial.println("'"+tps);
-  
+
+  MJ_APC_SSID_PSSS(tss,tps);
+}
+
+void MJ_APC_SSID_PSSS(String tss, String tps) {
   WiFi.begin(tss.c_str(),tps.c_str());
 
   //Setup時　コネクトしたように見えてしてない場合があるための処理
@@ -812,6 +899,86 @@ void MJ_APC(String ssidpwd) {
   }
 }
 
+void MJ_RegistList() {
+  int i;
+  for(i=0;i<8;i++) {
+    Serial.print("'#");Serial.print(i);Serial.print(": ");
+    if(apcbuf.sp[i].ssid[0]>0x20&&apcbuf.sp[i].ssid[0]<0x80) {
+      Serial.println(String(apcbuf.sp[i].ssid));
+    } else {
+      if(apcbuf.sp[i].ssid[0]>0) {
+        for(int j=0;j<32;j++) {
+            apcbuf.sp[i].ssid[j]=0;
+            apcbuf.sp[i].pass[j]=0;
+        }
+        SaveAPConfig();
+      }
+      Serial.println("");
+    }
+  }
+}
+
+void MJ_ConnectNum(String tid) {
+  int id=tid.toInt();
+  if(id<0||id>7) return;
+  MJ_APC_SSID_PSSS(String(apcbuf.sp[id].ssid),String(apcbuf.sp[id].pass));
+}
+
+void MJ_DeleteReg(String tid) {
+  int id=tid.toInt();
+  if(id<0||id>7) return;
+  for(int j=0;j<32;j++) {
+      apcbuf.sp[id].ssid[j]=0;
+      apcbuf.sp[id].pass[j]=0;
+  }
+  SaveAPConfig();
+}
+
+void RegistSSID(String idssidpwd) {
+  idssidpwd.replace("\ "," ");
+  String tid="";//0-7
+  String tss="";
+  String tps="";
+
+  tid=idssidpwd.substring(0,1);
+  int id=tid.toInt();
+  if(id<0 || id>7) {
+    //Serial.println("'error");
+    return;
+  }
+  
+  String ssidpwd=idssidpwd.substring(2);
+  int sc=ssidpwd.length(); /* 文字数 */
+  int ps=ssidpwd.lastIndexOf(" ",sc-1); /* スペースの位置 */
+  
+  if(sc<=0) {/*** 文字がない場合 ***/
+    if(lastSSID.length()>0 && lastPASS.length()>0) {
+      tss=lastSSID; tps=lastPASS;
+    } else {
+      //Serial.println("'error");
+      return;
+    }
+  } else if(ps<0) {/*** スペースがない場合 ***/
+    if(lastPASS.length()>0) {
+      tss=ssidpwd; tps=lastPASS;
+    } else {
+      tss=ssidpwd.substring(0,ps);//return;
+    }
+  } else {
+    tss=ssidpwd.substring(0,ps);
+    tps=ssidpwd.substring(ps+1);
+  }
+
+  int apn=tss.toInt();
+  if(tss.length()==1 && (apn>=0 && apn<10)) tss=aplist[apn];
+
+  strcpy(apcbuf.sp[id].ssid,tss.c_str());
+  strcpy(apcbuf.sp[id].pass,tps.c_str());
+  SaveAPConfig();
+
+  Serial.print("'Saved #");Serial.println(tid);
+}
+
 /***************************************
  * 
  * WiFiアクセスポイント
@@ -832,15 +999,21 @@ bool CheckEEPROMdata(char *s) {
 }
 
 void LoadAPConfig() {
-  EEPROM.begin(320);//使用するサイズを宣言
+  EEPROM.begin(1024);//使用するサイズを宣言
   EEPROM.get<APCONFIG>(0, apcbuf);
   CheckEEPROMdata(apcbuf.ssid); lastSSID=String(apcbuf.ssid);
   CheckEEPROMdata(apcbuf.pass); lastPASS=String(apcbuf.pass);
   CheckEEPROMdata(apcbuf.homepage); homepage=String(apcbuf.homepage);
-  if(CheckEEPROMdata(apcbuf.softap_ssid)==false||CheckEEPROMdata(apcbuf.softap_pass)==false) {
-    strcpy(apcbuf.softap_ssid,default_softap_ssid);
+  
+  //if(CheckEEPROMdata(apcbuf.softap_ssid)==false||CheckEEPROMdata(apcbuf.softap_pass)==false) {
+    String mjssid=GetMJSoftApSSID();
+    strcpy(apcbuf.softap_ssid,mjssid.c_str());//default_softap_ssid);
+    
+  if(CheckEEPROMdata(apcbuf.softap_pass)==false) {
     strcpy(apcbuf.softap_pass,default_softap_pass);
   }
+
+  showForce=apcbuf.showForce;
 }
 
 void SaveAPConfig() { //String tss, String tps, String hp) {
@@ -849,9 +1022,12 @@ void SaveAPConfig() { //String tss, String tps, String hp) {
     apcbuf.pass[i]=0;
     apcbuf.homepage[i]=0;
   }
+  
   lastSSID.toCharArray(apcbuf.ssid,lastSSID.length()+1);
   lastPASS.toCharArray(apcbuf.pass,lastPASS.length()+1);
   homepage.toCharArray(apcbuf.homepage,homepage.length()+1);
+  apcbuf.showForce=showForce;
+  
   EEPROM.put<APCONFIG>(0, apcbuf);
   EEPROM.commit();//内蔵フラッシュメモリに実際に書込
 }
@@ -920,6 +1096,7 @@ void MJ_SOFTAP(String ssidpwd) {
     tss=ssidpwd.substring(0,ps);
     tps=ssidpwd.substring(ps+1);
   }
+  
   //SetSoftAP(tss,tps);
   int n=tss.length();
   int m=tps.length();
@@ -1011,6 +1188,17 @@ void MJ_APLAPC() {
     if(lastSSID.equals(WiFi.SSID(i))) {
       MJ_APC("");
       return;
+    }
+  }
+  String ws="";
+  
+  for(int j=0; j<8; j++) {
+    ws=apcbuf.sp[j].ssid;
+    for (int i=0; i<n; ++i) {
+      if(ws.equals(WiFi.SSID(i))) {
+        MJ_APC_SSID_PSSS(ws,apcbuf.sp[j].pass);
+        return;
+      }
     }
   }
 }
@@ -1606,7 +1794,7 @@ String mac2String(byte ar[])
   for (byte i = 0; i < 6; ++i)
   {
     char buf[3];
-    sprintf(buf, "%2X", ar[i]);
+    sprintf(buf, "%02X", ar[i]);
     s += buf;
     if (i < 5) s += ':';
   }
@@ -1627,6 +1815,19 @@ void MJ_MACADDR() {
   WiFi.macAddress(mac);
   Serial.print("'");
   Serial.println(mac2String(mac));
+}
+
+String GetMJSoftApSSID() {
+  byte mac[6];
+  WiFi.macAddress(mac);
+  String s="MJ-";
+  for (byte i = 0; i < 6; ++i)
+  {
+    char buf[3];
+    sprintf(buf, "%02X", mac[i]);
+    s += buf;
+  }
+  return s;  
 }
 
 /***************************************
@@ -1954,14 +2155,36 @@ bool handleFileRead(String path){
 
 /***************************************/
 /***************************************
+ * udpStart
+ * USP開始
+ */
+ 
+#ifdef supportUDP
+void udpStart(unsigned int lp) {
+  if(isUDP) {
+    if(lp==UDP_Read_Port) return;
+    udp.stop();
+    isUDP=false;
+    delay(500);
+  }
+  udp.begin(lp);//UDP_LocalPort
+  delay(500);
+  Serial.println("'UDP started...");
+  isUDP=true;
+  UDP_Read_Port=lp;
+}
+#endif
+
+/***************************************
  *  MJ_UDP_Start
 */
 
 void MJ_UDP_Start(String pt) {
-  #ifdef supporrtUDP
+  #ifdef supportUDP
+  unsigned int lp=UDP_LocalPort;
   int sc=pt.length(); /* 文字数 */
-  if(sc>0) UDP_LocalPort=pt.toInt();
-  udpStart();
+  if(sc>0) lp=pt.toInt();
+  udpStart(lp);
   #endif
 }
 
@@ -1969,7 +2192,7 @@ void MJ_UDP_Start(String pt) {
  *  MJ_UDP_Packet
 */
 
-void MJ_UDP_Packet() {
+void MJ_UDP_ReadPacket() {
   #ifdef supportUDP
   unsigned int rlen;
   if((rlen = udp.parsePacket())) {
@@ -1979,12 +2202,61 @@ void MJ_UDP_Packet() {
     }
     */
     udp.read(packetBuffer, (rlen > UDP_PACKET_SIZE) ? UDP_PACKET_SIZE : rlen);
+    Serial.print("'");
     for (int i = 0; i < rlen; i++){
       Serial.print(packetBuffer[i]);
       delay(1);
     }
+    Serial.println("");
   }
   #endif
 }
 
+/***************************************
+ *  MJ_UDP_Write
+*/
+
+void MJ_UDP_WritePacket(String msg) {
+  int sc=msg.indexOf(" ");
+  if(sc<1) {MJ_UDP_Write(msg); return;}
+  IPAddress sip;
+  if(!sip.fromString(msg.substring(0,sc))) {MJ_UDP_Write(msg); return;}
+  //Serial.println(msg.substring(0,sc));
+  
+  msg=msg.substring(sc+1);
+  sc=msg.indexOf(" ");
+  if(sc<1) {MJ_UDP_Write(msg); return;}
+  uint16 spt=msg.substring(0,sc).toInt();
+  //Serial.println(msg.substring(0,sc));
+ 
+  msg=msg.substring(sc+1);
+  //Serial.println(msg);
+ 
+  UDP_Write_IPAddress=sip;
+  UDP_Write_Port=spt;
+  MJ_UDP_Write(msg);
+
+}
+
+void MJ_UDP_Write(String msg) {
+  //Serial.println(UDP_Write_IPAddress);
+  //Serial.println(UDP_Write_Port);
+  //Serial.println(msg);
+  
+  // send a reply, to the IP address and port that sent us the packet we received
+  udp.beginPacket(UDP_Write_IPAddress,UDP_Write_Port);//udp.remoteIP(), udp.remotePort());
+  udp.write(msg.c_str());
+  udp.endPacket();  
+}
+
+/*
+void MJ_Test(String msg) {
+  int sc=msg.indexOf(" ");
+  if(sc<1) {Serial.println("Error..Is not IP.");return;}
+  IPAddress sip;
+  if(!sip.fromString(msg.substring(0,sc))) {Serial.println("Error..Is not IP.");}
+  //Serial.println(msg.substring(0,sc));
+  Serial.println("This is IP.");
+}
+*/
 /***************************************/
