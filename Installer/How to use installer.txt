@@ -1,0 +1,34 @@
+
+MicJackをより簡単にインストールできるように
+ESPWriterというアプリを作りました。
+
+1. パソコンとMixJuiceなど、ESP-WROOM-02機器を繋げてから、
+　　MixJuiceなどのスイッチを入れてください。
+
+	GND - GND
+	TX - RX
+	RX - TX
+
+	IO0 - GND （書き込み状態）
+
+2, OS X 64bit, Windows, Linux64bitのフォルダに入っているESPUploaderを起動
+
+3, Port (-cp)で、シリアルポートを選択する
+	（Speed, Reset, Uploadは自動で設定されます。）
+
+	注意
+	インストールしても、Soft WDT Resetのエラーでうまく動かない場合は
+	Uploadのファイル選択でInstallSetting300.csvというファイルを選択して下さい
+
+4, Installの中に書かれたインストール設定が気に入らなけらば、お好みに合わせて変更してください
+
+5, 「Start」ボタンをクリックすると、インストールが始まります。
+　　多少時間がかかりますので、しばらくお待ちください。
+
+
+なお、ターミナルでインストールする場合は、以下のような書式になります。
+./esptool -vv -cd ck -cb 115200 -cp /dev/cu.usbserial-DA0124WU -ca 0x00000 -cf MicJack.ino.bin -ca 0x00100000 -cf MicJack.spiffs.bin
+
+
+イチゴジャム レシピさんが、わかりやすく説明しています。参考にしてみてください。
+https://15jamrecipe.jimdo.com/mixjuice/micjack/
