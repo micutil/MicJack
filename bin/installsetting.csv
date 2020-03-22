@@ -1,4 +1,4 @@
 cd,ck,
 cb,115200,
-up,MicJack.ino.bin,0x00000000
+up,MicJack.bin,0x00000000
 up,MicJack.spiffs.bin,0x00100000
