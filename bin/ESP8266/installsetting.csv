@@ -1,0 +1,4 @@
+cd,ck,
+cb,115200,
+up,MicJack.ino.generic.bin,0x00000000
+up,MicJack.spiffs.bin,0x00100000
