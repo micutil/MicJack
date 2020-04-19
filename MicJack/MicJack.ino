@@ -6,6 +6,7 @@
  *  CC BY Michio Ono. http://ijutilities.micutil.com
  *  
  *  *Version Information
+ *  2020/ 4/19  ver 1.2.0b1 ESP32 Module, M5Stack, M5StickC version
  *  2020/ 3/22  ver 1.1.0b2 UDP, TJ, FP (200307:1.1.0b1)
  *  2018/10/10  ver 1.0.1b2
  *  2018/10/ 8  ver 1.0.1b1
@@ -19,15 +20,57 @@
  *  MicJack紹介ページ（イチゴジャム レシピ：https://15jamrecipe.jimdo.com/mixjuice/micjack/ ）
  *  
  */
- 
-#include <ESP8266WiFi.h>
+
+#include "MJBoard.h"
+
+#ifdef ARDUINO_ESP8266_MODULE //ESP8266
+  #include <ESP8266mDNS.h>
+  FS qbFS = SPIFFS;
+#endif
+
+#ifdef ARDUINO_ESP32_MODULE
+  #define hasDISP
+  #include <ESPmDNS.h>
+#endif
+
+#ifdef ARDUINO_M5Stack_Core_ESP32
+  #define useSD
+  #define hasDISP
+  #include <M5Stack.h>
+  #include <ESPmDNS.h>
+  const int DWidth=320;
+  const int DHeight=240;
+#endif
+
+#ifdef ARDUINO_M5StickC_ESP32
+  #define hasDISP
+  #include <M5StickC.h>
+  #include <ESPmDNS.h>
+  const int DWidth=160;
+  const int DHeight=80;
+#endif
+
+#include <WebServer.h>
 #include <WiFiClientSecure.h>
-#include <ESP8266WebServer.h>
 #include <EEPROM.h>
 #include <FS.h>
-#include <ESP8266mDNS.h>
 
-const String MicJackVer="MicJack-1.1.0b1";
+#ifdef useSD
+  fs::SDFS qbFS = SD;
+#else
+  #define useSPIFFS
+  #ifndef ARDUINO_ESP8266_MODULE
+  #include <SPIFFS.h>
+  fs::SPIFFSFS qbFS = SPIFFS;
+  #endif
+#endif //useSD or useSPIFFS
+
+#include "MJSerial.h"
+#ifndef ARDUINO_M5StickC_ESP32
+MJSerial mjSer;
+#endif
+
+const String MicJackVer="MicJack-1.2.0b1";
 const String TelloJackVer="TelloJack-1.0.0b1";
 const String MJVer="MixJuice-1.3.0";
 const int sleepTimeSec = 60;
@@ -88,14 +131,18 @@ int spn=kspn;
 /*** Use ccess Status LED ***/
 #define useMJLED
 #ifdef useMJLED
+  #if defined(ARDUINO_M5StickC_ESP32)
+  const int connLED=10; //Green
+  #else
   const int connLED=12; //Green
+  #endif
   const int postLED=4;  //Yellow
   const int getLED=5;   //Red
 #endif
 
 /*** Web Server ***/
 #define initStartSERVER
-ESP8266WebServer server(80);
+WebServer server(80);//ESP8266WebServer server(80);
 boolean isServer=false;
 String rootPage;
 const char* mjname = "micjack";
@@ -104,15 +151,15 @@ const char* mjname = "micjack";
 #define supportUDP
 #ifdef supportUDP
   //#define initStartUDP
-  #include <WiFiUdp.h>
-  WiFiUDP udp;
+  #include <EthernetUdp.h>//#include <WiFiUdp.h>
+  EthernetUDP udp;//WiFiUDP udp;
   unsigned int UDP_LocalPort = 20001;//10000;
   unsigned int UDP_Read_Port = UDP_LocalPort;
   IPAddress UDP_Write_IPAddress;
   unsigned int UDP_Write_Port;
   //unsigned char UDP_Minimum_Packet = 1;
   boolean isUDP=false;
-  const int UDP_PACKET_SIZE = UDP_TX_PACKET_MAX_SIZE;
+  const int UDP_PACKET_SIZE = 1024;//UDP_TX_PACKET_MAX_SIZE;
   char packetBuffer[UDP_PACKET_SIZE+1];
 #endif
 
@@ -141,8 +188,18 @@ bool kbdMode=false;
 #define detectHostKbd //ホストからの送信データ //
 #ifdef useKbd
 #include <ps2dev.h>
-#define KB_CLK      13 // 0   // A4  // PS/2 CLK  IchigoJamのKBD1に接続 //21//
-#define KB_DATA     16 // 15  // A5  // PS/2 DATA IchigoJamのKBD2に接続 //22//
+
+#if defined(ARDUINO_ESP32_MODULE) || defined(ARDUINO_M5Stack_Core_ESP32)
+  #define KB_CLK      21 // 0   // A4  // PS/2 CLK  IchigoJamのKBD1に接続 //21//
+  #define KB_DATA     22 // 15  // A5  // PS/2 DATA IchigoJamのKBD2に接続 //22//
+#elif defined(ARDUINO_M5StickC_ESP32)
+  #define KB_CLK      21 // 0   // A4  // PS/2 CLK  IchigoJamのKBD1に接続 //21//
+  #define KB_DATA     22 // 15  // A5  // PS/2 DATA IchigoJamのKBD2に接続 //22//
+#elif defined(ARDUINO_ESP8266_MODULE)
+  #define KB_CLK      13 // 0   // A4  // PS/2 CLK  IchigoJamのKBD1に接続 //21//
+  #define KB_DATA     16 // 15  // A5  // PS/2 DATA IchigoJamのKBD2に接続 //22//
+#endif //ARDUINO_ARCH_ESP32
+
 uint8_t enabled =0;               // PS/2 ホスト送信可能状態
 PS2dev keyboard(KB_CLK, KB_DATA); // PS/2デバイス
 
@@ -188,7 +245,7 @@ void ack() {
 
 // PS/2 ホストから送信されるコマンドの処理
 int keyboardcommand(int command) {
-  //Serial.println(command);
+  //mjSer.println(command);
   unsigned char val;
   uint32_t tm;
   switch (command) {
@@ -257,11 +314,11 @@ bool sendKeyCode(int key) {
 
     if(key>255+16) return false;
     
-    uint8_t t=ijKeyMap[0][key];//Serial.println(t);
-    uint8_t c=ijKeyMap[1][key];//Serial.println(c);
+    uint8_t t=ijKeyMap[0][key];//mjSer.println(t);
+    uint8_t c=ijKeyMap[1][key];//mjSer.println(c);
     
     if(t==0||t==6) {
-      Serial.write(key);
+      mjSer.write(key);
       return false;
     }
 
@@ -281,7 +338,7 @@ bool sendKeyCode(int key) {
   
 #endif //useKbd
 
-  Serial.write(key);
+  mjSer.write(key);
   return false;
 }
 
@@ -290,45 +347,84 @@ bool sendKeyCode(int key) {
  * 
  ************************************/
 void setup() {
-
-  //Serial.begin(74880);
-  Serial.begin(115200);
-  delay(5000);
-  Serial.println("");
-  Serial.println("NEW");delay(100);
-  Serial.println("CLS");delay(100);
-  Serial.println("");
-  Serial.println("");
   
+  #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+    M5.begin();
+  #endif
+
+  #ifdef ARDUINO_M5StickC_ESP32
+    M5.Lcd.setRotation(3); // Must be setRotation(0) for this sketch to work correctly //for M5StickC
+    Serial2.begin(115200, SERIAL_8N1, 0, 26); // EXT_IO
+  #endif
+
+  //mjSer.begin(74880);
+  /*
+  mjSer.begin(115200);
+  while (!mjSer) { ; }
+  #ifdef mjSub
+  mjSub.begin(115200);
+  while (!mjSub) { ; }
+  #endif
+  */
+  
+  //Start SPIFFS or microSD
+  #ifdef useSPIFFS
+    while (!qbFS.begin()) { mjSer.println("."); }// mjSer.println("SPIFFS IO failed..."); }
+  #endif //useSPIFFS
+  #ifdef useSD
+    while (!SD.begin()) { mjSer.println("."); }//mjSer.println("SD IO failed..."); }
+  #endif //useSD
+
+  #if defined(ARDUINO_M5Stack_Core_ESP32)// || defined(ARDUINO_M5StickC_ESP32)
+    tft_terminal_setup(false);
+  #endif
+  
+  delay(2000);
+  mjSer.println("");
+  mjSer.println("NEW");delay(100);
+  mjSer.println("CLS");delay(100);
+  mjSer.println("");
+  mjSer.println("");
+
   #ifdef useMJLED
+  #if defined(ARDUINO_ESP8266_MODULE) || defined(ARDUINO_ESP32_MODULE)
     pinMode(connLED, OUTPUT);//1
     pinMode(postLED, OUTPUT);//2
     pinMode(getLED,  OUTPUT);//3
+  #elif defined(ARDUINO_M5StickC_ESP32)
+    //pinMode(connLED, OUTPUT);//1
+    //digitalWrite(connLED, HIGH);
+    InitStatusLED();
   #endif
+  #endif //useMJLED
 
   LoadAPConfig();
   
   // Set WiFi to station mode
   WiFi.mode(WIFI_STA);
-  Serial.println("");
-  Serial.println("'"+MJVer);
-  Serial.println("'"+MicJackVer);
-  Serial.println("'"+TelloJackVer);
-  Serial.println("'CC BY Michio Ono");
-  Serial.println("");
+  mjSer.println("");
+  mjSer.println("'"+MJVer);
+  mjSer.println("'"+MicJackVer);
+  mjSer.println("'"+TelloJackVer);
+  mjSer.println("'CC BY Michio Ono");
+  mjSer.println("");
 
-  SPIFFS.begin();
-  {
-    Serial.printf("'SPIFFS files...\n");
-    Dir dir = SPIFFS.openDir("/");
-    while (dir.next()) {    
-      String fileName = dir.fileName();
-      size_t fileSize = dir.fileSize();
-      Serial.printf("'%s:%s\n", fileName.c_str(), formatBytes(fileSize).c_str());
+  //#ifdef useSPIFFS or #ifdef useSD
+  //SPIFFS.begin();
+/*  {
+    mjSer.println("'qbFS files...");//mjSer.println("'SPIFFS files...");
+    File root = qbFS.open("/");//File root = SPIFFS.open("/");
+    File file = root.openNextFile();
+    while(file){
+      String fileName = file.name();
+      size_t fileSize = file.size();
+      mjSer.printfileinfo("'%s:%s\n", fileName.c_str(), formatBytes(fileSize).c_str());
       delay(500);
-    }    
-    Serial.printf("\n");
+      file = root.openNextFile();
+    }
+    mjSer.println("");
   }
+*/
 
   /* APモード */
   softApStart();
@@ -338,8 +434,8 @@ void setup() {
   
   /* 自動接続 */
   WiFi.disconnect();//一回切断した後に接続
-  MJ_APLAPC();
-
+  MJ_APC("");//MJ_APLAPC();
+  
   #ifdef initStartUDP
     udpStart(UDP_Read_Port);
   #endif
@@ -353,11 +449,11 @@ void setup() {
   #endif
 
 #ifdef useKbd
-/*  Serial.println("'Low or High");
+/*  mjSer.println("'Low or High");
   digitalWrite(KB_CLK,LOW);digitalWrite(KB_DATA,LOW);
   for(int i=0;i<3;i++) {
-    if(digitalRead(KB_CLK)==HIGH) Serial.println("'1HIGH"); else Serial.println("'1LOW"); 
-    if(digitalRead(KB_DATA)==HIGH) Serial.println("'2HIGH"); else Serial.println("'2LOW"); 
+    if(digitalRead(KB_CLK)==HIGH) mjSer.println("'1HIGH"); else mjSer.println("'1LOW"); 
+    if(digitalRead(KB_DATA)==HIGH) mjSer.println("'2HIGH"); else mjSer.println("'2LOW"); 
   }
 */
   //trueでも意味がない
@@ -386,8 +482,8 @@ void setup() {
   
 #endif
 
-  Serial.println("");
-  Serial.println("'Ready to go!");
+  mjSer.println("'Ready to go!");
+  mjSer.println("");
 
 }
 
@@ -402,10 +498,10 @@ void softApStart() {
   delay(500);
   mySoftAPIP = WiFi.softAPIP();
   String sn="";sn=String(apcbuf.softap_ssid);
-  Serial.println("'Soft AP: "+sn);
+  mjSer.println("'Soft AP: "+sn);
   delay(500);
-  Serial.print("'IP: ");
-  Serial.println(mySoftAPIP); Serial.println("");
+  mjSer.print("'IP: ");
+  mjSer.println(mySoftAPIP); mjSer.println("");
 }
 
 /************************************
@@ -425,8 +521,8 @@ void serverStart() {
   //makeRootPage();
   server.begin();
   delay(500); 
-  Serial.println("'HTTP Server started...");
-  Serial.println("");
+  mjSer.println("'HTTP Server started...");
+  mjSer.println("");
   
   isServer=true;  
   
@@ -440,25 +536,25 @@ void serverStart() {
 void OTAStart() {
   /*
   ArduinoOTA.onStart([]() {
-    Serial.println("'Start");
+    mjSer.println("'Start");
   });
   ArduinoOTA.onEnd([]() {
-    Serial.println("\n'End");
+    mjSer.println("\n'End");
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("'Progress: %u%%\r", (progress / (total / 100)));
+    mjSer.printf("'Progress: %u%%\r", (progress / (total / 100)));
   });
   ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("'Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("'Auth Failed");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("'Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("'Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("'Receive Failed");
-    else if (error == OTA_END_ERROR) Serial.println("'End Failed");
+    mjSer.printf("'Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) mjSer.println("'Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) mjSer.println("'Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) mjSer.println("'Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) mjSer.println("'Receive Failed");
+    else if (error == OTA_END_ERROR) mjSer.println("'End Failed");
   });
   */
   ArduinoOTA.begin();
-  Serial.println("'OTA supported...");
+  mjSer.println("'OTA supported...");
 }
 
 #endif
@@ -468,31 +564,63 @@ void OTAStart() {
  * 
  ************************************/
 
+#if defined(ARDUINO_ESP32_MODULE) || defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+  const int mjNum=2;
+  HardwareSerial *mjSS[]={&mjMain,&mjSub};
+#elif defined(ARDUINO_ESP8266_MODULE)
+  const int mjNum=1;
+  HardwareSerial *mjSS[]={&mjMain};
+#endif
+
 void loop() {
+
+  #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+  M5.update();
   
+  if(M5.BtnA.wasPressed()) {
+    drawAPQRCode();
+  }
+  if(M5.BtnB.wasPressed()) {
+    #if defined(ARDUINO_M5Stack_Core_ESP32)
+      tft_terminal_setup(true);
+    #elif defined(ARDUINO_M5StickC_ESP32)
+      if (staIP[0] >= 0x20 && staIP[0] != '?') {
+        M5.Lcd.fillRect(80,0,180,80,TFT_BLACK);
+        ConnectStatusLED(true,IPAddressToStr(staIP));
+      }
+    #endif
+  }
+  #endif
+
+  #ifdef ARDUINO_M5Stack_Core_ESP32
+  if(M5.BtnC.wasPressed()) {
+    
+  }
+  #endif
+
   #ifdef supportOTA
     ArduinoOTA.handle();
   #endif
 
   #ifdef useKbd
-  #ifdef detectHostKbd
-  if(apcbuf.kbd) {
-    if(apcbuf.useHostKbdCmd) {
-      unsigned char ck;  // ホストからの送信データ
-      if( (digitalRead(KB_CLK)==LOW) || (digitalRead(KB_DATA) == LOW)) {
-        while(keyboard.read(&ck)) ;
-        keyboardcommand(ck);
+    #ifdef detectHostKbd
+    if(apcbuf.kbd) {
+      if(apcbuf.useHostKbdCmd) {
+        unsigned char ck;  // ホストからの送信データ
+        if( (digitalRead(KB_CLK)==LOW) || (digitalRead(KB_DATA) == LOW)) {
+          while(keyboard.read(&ck)) ;
+          keyboardcommand(ck);
+        }
       }
     }
-  }
-  #endif
+    #endif
   #endif  
 
-  while (Serial.available()) {
-
+  /*
+  while (mjMain.available()) {
     if(postmode&&posttype==HTML_POST_QUEST) {
       //Quest用ポストデータ
-      uint8_t q=(uint8_t)Serial.read();
+      uint8_t q=(uint8_t)mjMain.read();
       int p=(postdata.length()%16);
       if(questEnd) {
         //データ終了後は0xFF000000000000にする
@@ -506,19 +634,59 @@ void loop() {
       stringComplete = true;
       inStr="";//いちおう消しておく
     } else {
-       char inChar = (char)Serial.read();
+      char inChar = (char)mjMain.read();
       //Check end of line 
       if(inChar=='\n' || inChar=='\r') {
         stringComplete = true;
-        if(!postmode) Serial.flush(); //読み飛ばし "OK"など
+        //if(!postmode) mjSer.flush(); //読み飛ばし "OK"など
+        // flashは Arduino 1.0から、読み込みを待つコマンドになったため
+        // flashしないで、次の読み込みで、次の処理をすることに
         break;
       } else {
         inStr += inChar;
       }
     }
-    
+    delay(1);
   }
+  */
 
+  for(int i=0;i<mjNum;i++) {
+    if(stringComplete==false) {
+      while (mjSS[i]->available()) {
+        if(postmode&&posttype==HTML_POST_QUEST) {
+          //Quest用ポストデータ
+          uint8_t q=(uint8_t)mjSS[i]->read();
+          int p=(postdata.length()%16);
+          if(questEnd) {
+            //データ終了後は0xFF000000000000にする
+            q=0; if(p==0) q=0xFF;
+          } else if(p==0&&q==0xFF) {
+            questEnd=true;//データ終了
+          }
+          questData[postdata.length()/2]=q;
+          String h="0"+String(q,HEX);
+          postdata += h.substring(h.length()-2);
+          stringComplete = true;
+          inStr="";//いちおう消しておく
+        } else {
+          char inChar = (char)mjSS[i]->read();
+          //Check end of line 
+          if(inChar=='\n' || inChar=='\r') {
+            stringComplete = true;
+            //if(!postmode) ss[i]->flush(); //読み飛ばし "OK"など
+            /* flashは Arduino 1.0から、読み込みを待つコマンドになったため
+             * flashしないで、次の読み込みで、次の処理をすることに
+             */
+            break;
+          } else {
+            inStr += inChar;
+          }
+        }
+        delay(1);
+      }
+    }
+  }
+  
   if(stringComplete) {  //データあり
     doMixJuice();
   }
@@ -550,9 +718,9 @@ void doMixJuice() {
   if(postmode) {
     /**** POSTモード 処理 ****/
     if(cs.startsWith("MJ POST END")) {
-      //Serial.println(posttype);
-      //Serial.println(postaddr);
-      //Serial.println(postdata);
+      //mjSer.println(posttype);
+      //mjSer.println(postaddr);
+      //mjSer.println(postdata);
       /* POST通信開始 */
       MJ_HTML(posttype,postaddr);
       ResetPostParam();
@@ -572,7 +740,7 @@ void doMixJuice() {
         case HTML_POST_QUEST:
           //postdata+=inStr;
           postdata.toUpperCase();
-          //Serial.println(postdata);
+          //mjSer.println(postdata);
           if(postdata.length()>=1024) {
             postdata=questBinToProg(questData)+'\n'+"[HEX]"+'\n'+postdata;
             inStr="MJ POST END";
@@ -629,7 +797,7 @@ void doMixJuice() {
     /*** KidspodにPOST START通信 ***/
     MJ_POST_START(HTML_POST,"kidspod.club/mj/"+inStr.substring(7));
     /*** リスト表示 ***/
-    Serial.println("LIST\n");
+    mjSer.println("LIST\n");
     
   } else if(cs.startsWith("MJ QPKP ")) {
     /*** KidspodにQuestpuroグラムをPOST START通信 ***/
@@ -648,17 +816,17 @@ void doMixJuice() {
     MJ_SLEEP(inStr.substring(9));
     
   } else if(cs.startsWith("MJ MJVER")) {
-    /*** バージョン ***/ Serial.println("'"+MicJackVer);
+    /*** バージョン ***/ mjSer.println("'"+MicJackVer);
     // Verで、エラー表示で、MixJuiceのバージョンを表示
     // MJVerで、MicJackのバージョンを表示
     
   } else if(cs.startsWith("MJ TJVER")||cs.startsWith("TJ VER")) {
-    /*** バージョン ***/ Serial.println("'"+TelloJackVer);
+    /*** バージョン ***/ mjSer.println("'"+TelloJackVer);
     // Verで、エラー表示で、MixJuiceのバージョンを表示
     // TelloJackのバージョンを表示
     
   } else if(cs.startsWith("MJ LIP")) {
-    /*** Local IP ***/ Serial.println(staIP);
+    /*** Local IP ***/ mjSer.println(staIP);
     
   } else if(cs.startsWith("MJ MACADDR")) {
     /*** Mac address ***/ MJ_MACADDR();
@@ -725,7 +893,10 @@ void doMixJuice() {
   } else if(cs.startsWith("MJ AREAD") || cs.startsWith("MJ ANA")) {
     /*** digitalRead ***/
     /* analog input 0 - 1V */
-    Serial.println(analogRead(A0));
+    #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+    #else
+    mjSer.println(analogRead(A0));
+    #endif
 
   } else if(cs.startsWith("MJ KBDCMD ON") || cs.startsWith("MJ KBDCMD 1")) {
     /*** Host KBD command ON ***/ MJ_HOSTKBDCMD(true);
@@ -803,7 +974,7 @@ void doMixJuice() {
   #endif //supportUDP
   
   } else if(cs.startsWith("MJ ")||cs.startsWith("TJ ")||cs.startsWith("FP ")) {
-    /*** NG ***/ Serial.println("'NG: "+MJVer);
+    /*** NG ***/ mjSer.println("'NG: "+MJVer);
   }
 
   inStr="";
@@ -844,8 +1015,8 @@ void MJ_APC(String ssidpwd) {
   int apn=tss.toInt();
   if(tss.length()==1 && (apn>=0 && apn<10)) tss=aplist[apn];
   
-  //Serial.println("'"+tss);
-  //Serial.println("'"+tps);
+  //mjSer.println("'"+tss);
+  //mjSer.println("'"+tps);
 
   MJ_APC_SSID_PSSS(tss,tps);
 }
@@ -855,29 +1026,29 @@ void MJ_APC_SSID_PSSS(String tss, String tps) {
 
   //Setup時　コネクトしたように見えてしてない場合があるための処理
   int64_t timeout = millis() + 10000;
-  Serial.print("'Connecting");
+  mjSer.print("'Connecting");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
-    Serial.print(".");
+    mjSer.print(".");
     if (timeout - millis() < 0) {
-      Serial.println("");
-      Serial.println("'Couldn't get a wifi connection");
+      mjSer.println("");
+      mjSer.println("'Couldn't get a wifi connection");
       return;
     }
   }
-  Serial.println("");
+  mjSer.println("");
 
   if (WiFi.status() != WL_CONNECTED) { 
-    Serial.println("'Couldn't get a wifi connection");
+    mjSer.println("'Couldn't get a wifi connection");
     //while(true);
   } else {
     //Station mode SSID
-    Serial.println("'WiFi Station: "+tss);
+    mjSer.println("'WiFi Station: "+tss);
     
    // if you are connected, print out info about the connection:
     //print the local IP address
     staIP = WiFi.localIP();
-    Serial.print("'IP: "); Serial.println(staIP);
+    mjSer.print("'IP: "); mjSer.println(staIP);
     
     //最後に接続した情報
     lastSSID=tss;
@@ -885,26 +1056,33 @@ void MJ_APC_SSID_PSSS(String tss, String tps) {
     SaveAPConfig();
     
     #ifdef useMJLED
-      digitalWrite(connLED, HIGH);
+      #if defined(ARDUINO_ESP8266_MODULE) || defined(ARDUINO_ESP32_MODULE)
+        digitalWrite(connLED, HIGH);
+      #elif defined(ARDUINO_M5StickC_ESP32)
+        //digitalWrite(connLED, LOW);
+      #endif
+      #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+        ConnectStatusLED(true,IPAddressToStr(staIP));
+      #endif
     #endif
 
     // Add service to MDNS-SD
     MDNS.begin(mjname);
     MDNS.addService("http", "tcp", 80);
     delay(500); 
-    Serial.print("'http://");
-    Serial.print(mjname);Serial.println(".local/");
-    delay(500); Serial.println("");
-    
+    mjSer.print("'http://");
+    mjSer.print(mjname);mjSer.println(".local/");
+    delay(500); mjSer.println("");
+
   }
 }
 
 void MJ_RegistList() {
   int i;
   for(i=0;i<8;i++) {
-    Serial.print("'#");Serial.print(i);Serial.print(": ");
+    mjSer.print("'#");mjSer.print(i);mjSer.print(": ");
     if(apcbuf.sp[i].ssid[0]>0x20&&apcbuf.sp[i].ssid[0]<0x80) {
-      Serial.println(String(apcbuf.sp[i].ssid));
+      mjSer.println(String(apcbuf.sp[i].ssid));
     } else {
       if(apcbuf.sp[i].ssid[0]>0) {
         for(int j=0;j<32;j++) {
@@ -913,7 +1091,7 @@ void MJ_RegistList() {
         }
         SaveAPConfig();
       }
-      Serial.println("");
+      mjSer.println("");
     }
   }
 }
@@ -943,7 +1121,7 @@ void RegistSSID(String idssidpwd) {
   tid=idssidpwd.substring(0,1);
   int id=tid.toInt();
   if(id<0 || id>7) {
-    //Serial.println("'error");
+    //mjSer.println("'error");
     return;
   }
   
@@ -955,7 +1133,7 @@ void RegistSSID(String idssidpwd) {
     if(lastSSID.length()>0 && lastPASS.length()>0) {
       tss=lastSSID; tps=lastPASS;
     } else {
-      //Serial.println("'error");
+      //mjSer.println("'error");
       return;
     }
   } else if(ps<0) {/*** スペースがない場合 ***/
@@ -976,7 +1154,7 @@ void RegistSSID(String idssidpwd) {
   strcpy(apcbuf.sp[id].pass,tps.c_str());
   SaveAPConfig();
 
-  Serial.print("'Saved #");Serial.println(tid);
+  mjSer.print("'Saved #");mjSer.println(tid);
 }
 
 /***************************************
@@ -1045,8 +1223,8 @@ void SetPCT(String s) {
 void SetSSID(String s) {
   int n=s.length();
   if(n<=0) {
-    Serial.println("'Station: "+lastSSID);
-    //Serial.println("'IP: "+lastSSID);
+    mjSer.println("'Station: "+lastSSID);
+    //mjSer.println("'IP: "+lastSSID);
   } else {
     lastSSID=s; SaveAPConfig();
   }
@@ -1055,7 +1233,7 @@ void SetSSID(String s) {
 void SetPASS(String s) {
   int n=s.length();
   if(n<=0) {
-    Serial.println("'"+lastPASS);
+    mjSer.println("'"+lastPASS);
   } else {
     lastPASS=s; SaveAPConfig();
   }
@@ -1101,18 +1279,18 @@ void MJ_SOFTAP(String ssidpwd) {
   int n=tss.length();
   int m=tps.length();
   if(n>0&&m<8) {
-    Serial.println("'Pass needs more than 8chrs..");
+    mjSer.println("'Pass needs more than 8chrs..");
     delay(1500);
   } else if(n<=0||m<=0) {
     String softap_ssid="";
     softap_ssid=String(apcbuf.softap_ssid);
-    Serial.println("'AP: "+softap_ssid);delay(500);
-    Serial.print("'IP: "); Serial.println(mySoftAPIP);
+    mjSer.println("'AP: "+softap_ssid);delay(500);
+    mjSer.print("'IP: "); mjSer.println(mySoftAPIP);
   } else {
     tss.toCharArray(apcbuf.softap_ssid,n+1);
     tps.toCharArray(apcbuf.softap_pass,m+1);
     SaveAPConfig();
-    Serial.println("'OK. ESP restart...");
+    mjSer.println("'OK. ESP restart...");
     delay(1500);
     ESP.restart();
   }
@@ -1126,24 +1304,24 @@ void MJ_SOFTAP(String ssidpwd) {
 
 void MJ_APL() {
   int cc;//Bytes of SSID name
-  Serial.println("'Scan Start");
+  mjSer.println("'Scan Start");
 
   // WiFi.scanNetworks will return the number of networks found
   int n = WiFi.scanNetworks();
   
   if (n == 0) {
-    Serial.println("'No networks found");
+    mjSer.println("'No networks found");
   } else {
     for (int i = 0; i < n; ++i) {
       // Print SSID and RSSI for each network found
       String s="'"+String(i)+": ";
       s=s+WiFi.SSID(i);//+" ("+WiFi.RSSI(i)+")";
-      //Serial.println((WiFi.encryptionType(i) == ENC_TYPE_NONE)?" ":"*");
-      Serial.println(s);
+      //mjSer.println((WiFi.encryptionType(i) == ENC_TYPE_NONE)?" ":"*");
+      mjSer.println(s);
       delay(100);
       if(i<10) aplist[i]=WiFi.SSID(i);
     }
-    Serial.println("");
+    mjSer.println("");
   }  
 }
 
@@ -1156,9 +1334,9 @@ void MJ_APL() {
 
 void MJ_APS() {
   if(WL_CONNECTED==WiFi.status())
-    Serial.println("1");
+    mjSer.println("1");
   else
-    Serial.println("0");
+    mjSer.println("0");
 }
 
 /***************************************
@@ -1169,9 +1347,16 @@ void MJ_APS() {
 
 void MJ_APD() {
   WiFi.disconnect();
-  Serial.println("'OK");
+  mjSer.println("'OK");
   #ifdef useMJLED
-    digitalWrite(connLED, LOW);
+    #if defined(ARDUINO_ESP8266_MODULE) || defined(ARDUINO_ESP32_MODULE)
+        digitalWrite(connLED, HIGH);
+      #elif defined(ARDUINO_M5StickC_ESP32)
+        //digitalWrite(connLED, LOW);
+    #endif
+    #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+      ConnectStatusLED(false);
+    #endif
   #endif
 }
 
@@ -1221,16 +1406,18 @@ void MJ_SLEEP(String tss) {
   
   int ps=tss.lastIndexOf(" ",sc-1);
   uint32_t ts;
+
+  #ifdef ARDUINO_ESP8266_MODULE
   RFMode wm=WAKE_RF_DEFAULT;
-  
   if(ps<0) {
     ts=(uint32_t)tss.toInt();
   } else {
-    ts=(uint32_t)tss.substring(0,ps).toInt(); //Serial.println(tss.substring(0,ps));
-    wm=(RFMode)tss.substring(ps+1).toInt(); //Serial.println(tss.substring(ps+1));
+    ts=(uint32_t)tss.substring(0,ps).toInt(); //mjSer.println(tss.substring(0,ps));
+    wm=(RFMode)tss.substring(ps+1).toInt(); //mjSer.println(tss.substring(ps+1));
   }
   
   ESP.deepSleep(ts,wm);
+  #endif
 }
 
 /***************************************
@@ -1303,8 +1490,8 @@ void MJ_HTML(int type, String addr) {
     host=addr.substring(0,ps);  // /より前
     url=addr.substring(ps);     // /を含んで後ろ
   }
-  //Serial.println("'"+host);
-  //Serial.println("'"+url);
+  //mjSer.println("'"+host);
+  //mjSer.println("'"+url);
 
   //------プロキシ-----
   String httpServer=host;
@@ -1330,7 +1517,12 @@ void MJ_HTML(int type, String addr) {
     case HTML_GETS:
     case HTML_GET_QUEST:
       #ifdef useMJLED
-        digitalWrite(getLED, HIGH);
+        #if defined(ARDUINO_ESP8266_MODULE) || defined(ARDUINO_ESP32_MODULE)
+          digitalWrite(getLED, HIGH);
+        #endif
+        #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+          GetStatusLED(true,addr);
+        #endif
       #endif
       client.print(String("GET ") + url + " HTTP/1.0\r\n" + 
                    "Host: " + host + "\r\n" + 
@@ -1344,7 +1536,12 @@ void MJ_HTML(int type, String addr) {
     case HTML_POSTS:
     case HTML_POST_QUEST:
       #ifdef useMJLED
-        digitalWrite(postLED, HIGH);
+        #if defined(ARDUINO_ESP8266_MODULE) || defined(ARDUINO_ESP32_MODULE)
+          digitalWrite(postLED, HIGH);
+        #endif
+        #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+          PostStatusLED(true,addr);
+        #endif
       #endif
 
       prm=postdata;//postdata.replace("\n","\r\n");//改行を置き換え
@@ -1370,7 +1567,7 @@ void MJ_HTML(int type, String addr) {
   int64_t timeout = millis() + 5000;
   while (client.available() == 0) {
     if (timeout - millis() < 0) {
-      Serial.println("'Client Timeout !");
+      mjSer.println("'Client Timeout !");
       client.stop();
       return;
     }
@@ -1395,8 +1592,8 @@ void MJ_HTML(int type, String addr) {
       if(spw<=1) {
         while(client.available()){
           String line = client.readStringUntil('\n');
-          Serial.print(line);
-          Serial.print('\n');
+          mjSer.print(line);
+          mjSer.print('\n');
           delay(spn);
         }
       } else {
@@ -1413,9 +1610,9 @@ void MJ_HTML(int type, String addr) {
                   if((a>='0'&&a<='9')||(a>='A'&&a<='F')||(a>='a'&&a<='f')) {
                     b = (uint8_t)client.read();
                     uint8_t v=HexTextToVal(a,b);
-                    Serial.write(v);//Serial.write((uint8_t)strtol(ab,NULL,16));
+                    mjSer.write(v);//mjSer.write((uint8_t)strtol(ab,NULL,16));
                     //String h="0"+String(HexTextToVal(a,b),HEX);
-                    //Serial.print(h.substring(h.length()-2));
+                    //mjSer.print(h.substring(h.length()-2));
                     if((rcvCnt%8)==0&&v==0xFF) hexEnd=true;
                     rcvCnt+=1;
                   } else {
@@ -1445,9 +1642,9 @@ void MJ_HTML(int type, String addr) {
               switch(c){
                 case 0: case '\r':
                   break;
-                case '\n': Serial.print('\n'); delay(spn);
+                case '\n': mjSer.print('\n'); delay(spn);
                   break;
-                default: Serial.print(c); delay(spw);
+                default: mjSer.print(c); delay(spw);
                   break;
               }
               break;
@@ -1457,9 +1654,9 @@ void MJ_HTML(int type, String addr) {
         if(type==HTML_GET_QUEST) {
           while(rcvCnt<512) {
             if((rcvCnt%8)==0)
-              Serial.write((uint8_t)0xFF);
+              mjSer.write((uint8_t)0xFF);
             else
-              Serial.write((uint8_t)0);
+              mjSer.write((uint8_t)0);
             rcvCnt+=1;
             delay(spw*2);
           }
@@ -1468,16 +1665,26 @@ void MJ_HTML(int type, String addr) {
 
       if(!addr.equals(homepage)) lastGET=addr;
       #ifdef useMJLED
-        digitalWrite(getLED, LOW);
+        #if defined(ARDUINO_ESP8266_MODULE) || defined(ARDUINO_ESP32_MODULE)
+          digitalWrite(getLED, LOW);
+        #endif
+        #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+          GetStatusLED(false);
+        #endif
       #endif
       break;
 
     case HTML_POST:
     case HTML_POSTS:
     case HTML_POST_QUEST:
-      Serial.println("'POST OK!");
+      mjSer.println("'POST OK!");
       #ifdef useMJLED
-        digitalWrite(postLED, LOW);
+        #if defined(ARDUINO_ESP8266_MODULE) || defined(ARDUINO_ESP32_MODULE)
+          digitalWrite(postLED, LOW);
+        #endif
+        #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+          PostStatusLED(false);
+        #endif
       #endif
       break;
       
@@ -1513,8 +1720,8 @@ void MJ_HTMLS(int type, String addr) {
     host=addr.substring(0,ps);  // /より前
     url=addr.substring(ps);     // /を含んで後ろ
   }
-  //Serial.println("'"+host);
-  //Serial.println("'"+url);
+  //mjSer.println("'"+host);
+  //mjSer.println("'"+url);
 
   //------プロキシ-----
   String httpServer=host;
@@ -1549,7 +1756,12 @@ void MJ_HTMLS(int type, String addr) {
     case HTML_GET:
     case HTML_GETS:
       #ifdef useMJLED
-        digitalWrite(getLED, HIGH);
+        #if defined(ARDUINO_ESP8266_MODULE) || defined(ARDUINO_ESP32_MODULE)
+          digitalWrite(getLED, HIGH);
+        #endif
+        #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+          GetStatusLED(true,addr);
+        #endif
       #endif
       client.print(String("GET ") + url + " HTTP/1.0\r\n" + 
                    "Host: " + host + "\r\n" + 
@@ -1562,7 +1774,12 @@ void MJ_HTMLS(int type, String addr) {
     case HTML_POST:
     case HTML_POSTS:
       #ifdef useMJLED
-        digitalWrite(postLED, HIGH);
+        #if defined(ARDUINO_ESP8266_MODULE) || defined(ARDUINO_ESP32_MODULE)
+          digitalWrite(postLED, HIGH);
+        #endif
+        #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+          PostStatusLED(true,addr);
+        #endif
       #endif
       prm=postdata;//postdata.replace("\n","\r\n");//改行を置き換え
 
@@ -1587,7 +1804,7 @@ void MJ_HTMLS(int type, String addr) {
   int64_t timeout = millis() + 5000;
   while (client.available() == 0) {
     if (timeout - millis() < 0) {
-      Serial.println("'Client Timeout !");
+      mjSer.println("'Client Timeout !");
       client.stop();
       return;
     }
@@ -1611,8 +1828,8 @@ void MJ_HTMLS(int type, String addr) {
       if(spw<=1) {
         while(client.available()){
           String line = client.readStringUntil('\n');
-          Serial.print(line);
-          Serial.print('\n');
+          mjSer.print(line);
+          mjSer.print('\n');
           delay(spn);
         }
       } else {
@@ -1624,11 +1841,11 @@ void MJ_HTMLS(int type, String addr) {
           case '\r':
             break;
           case '\n':
-            Serial.print('\n');
+            mjSer.print('\n');
             delay(spn);
             break;
           default:
-            Serial.print(c);
+            mjSer.print(c);
             delay(spw);
             break;
           }
@@ -1636,15 +1853,25 @@ void MJ_HTMLS(int type, String addr) {
       }
       if(!addr.equals(homepage)) lastGET=addr;
       #ifdef useMJLED
-        digitalWrite(getLED, LOW);
+        #if defined(ARDUINO_ESP8266_MODULE) || defined(ARDUINO_ESP32_MODULE)
+          digitalWrite(getLED, LOW);
+        #endif
+        #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+          GetStatusLED(false);
+        #endif
       #endif
       break;
 
     case HTML_POST:
     case HTML_POSTS:
-      Serial.println("'POST OK!");
+      mjSer.println("'POST OK!");
       #ifdef useMJLED
-        digitalWrite(postLED, LOW);
+        #if defined(ARDUINO_ESP8266_MODULE) || defined(ARDUINO_ESP32_MODULE)
+          digitalWrite(postLED, LOW);
+        #endif
+        #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+          PostStatusLED(false);
+        #endif
       #endif
       break;
       
@@ -1674,7 +1901,12 @@ void MJ_POST_START(int type, String addr) {
     questEnd=false;
 
     #ifdef useMJLED
-      digitalWrite(postLED, HIGH);
+      #if defined(ARDUINO_ESP8266_MODULE) || defined(ARDUINO_ESP32_MODULE)
+        digitalWrite(postLED, HIGH);
+      #endif
+      #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+        PostStatusLED(true,addr);
+      #endif
     #endif
     
   }
@@ -1702,10 +1934,10 @@ void MJ_QSEND(String qd) {
         a=(uint8_t)c;
         if((a>='0'&&a<='9')||(a>='A'&&a<='F')||(a>='a'&&a<='f')) {
           i+=1;b=(uint8_t)qd.charAt(i);
-          uint8_t v=HexTextToVal(a,b);//Serial.print(v,HEX);
-          Serial.write(v);//Serial.write((uint8_t)strtol(ab,NULL,16));//Serial.print(v,HEX);//
+          uint8_t v=HexTextToVal(a,b);//mjSer.print(v,HEX);
+          mjSer.write(v);//mjSer.write((uint8_t)strtol(ab,NULL,16));//mjSer.print(v,HEX);//
           //String h="0"+String(HexTextToVal(a,b),HEX);
-          //Serial.print(h.substring(h.length()-2));
+          //mjSer.print(h.substring(h.length()-2));
           if((rcvCnt%8)==0&&v==0xFF) {
             hexEnd=true;
             i=qd.length();
@@ -1738,9 +1970,9 @@ void MJ_QSEND(String qd) {
   /* もし512バイトよりすくなかったら */
   while(rcvCnt<512) {
     if((rcvCnt%8)==0)
-      Serial.write((uint8_t)0xFF);
+      mjSer.write((uint8_t)0xFF);
     else
-      Serial.write((uint8_t)0);
+      mjSer.write((uint8_t)0);
     rcvCnt+=1;
     delay(spw*2);
   }
@@ -1802,19 +2034,19 @@ String mac2String(byte ar[])
 }
 
 void MJ_MAC() {
-  Serial.print("'");
-  Serial.print("MAC Address: ");
+  mjSer.print("'");
+  mjSer.print("MAC Address: ");
   
   byte mac[6];
   WiFi.macAddress(mac);
-  Serial.println(mac2String(mac)); 
+  mjSer.println(mac2String(mac)); 
 }
 
 void MJ_MACADDR() {
   byte mac[6];
   WiFi.macAddress(mac);
-  Serial.print("'");
-  Serial.println(mac2String(mac));
+  mjSer.print("'");
+  mjSer.println(mac2String(mac));
 }
 
 String GetMJSoftApSSID() {
@@ -1838,17 +2070,17 @@ String GetMJSoftApSSID() {
 void SerialPrint(String s, int m=1) {
   int cc=s.length();
   if(cc<=m)
-    Serial.println(s);
+    mjSer.println(s);
   else {
     for(int j=0; j<cc; j=j+m) {
       if(cc-j<m) {
-        Serial.print(s.substring(j));
+        mjSer.print(s.substring(j));
       } else {
-        Serial.print(s.substring(j,j+m));
+        mjSer.print(s.substring(j,j+m));
       }
       delay(spw);
     }
-    Serial.println("");
+    mjSer.println("");
   }
 }
 
@@ -1872,7 +2104,7 @@ void MJ_SPW(String sw) {
     spw=sw.substring(0,ps).toInt();
     spn=sw.substring(ps+1).toInt();
   }
-  Serial.println("'OK");
+  mjSer.println("'OK");
 }
 
 /***************************************
@@ -1891,9 +2123,9 @@ void MJ_HOSTKBDCMD(bool m) {
   }
   
   if(m)
-    Serial.println("'Use host kbd cmd");
+    mjSer.println("'Use host kbd cmd");
   else
-    Serial.println("'Unuse host kbd cmd");
+    mjSer.println("'Unuse host kbd cmd");
 }
 
 /***************************************
@@ -1905,7 +2137,7 @@ void MJ_HOSTKBDCMD(bool m) {
 void MJ_IJKBD() {
   MJ_HOSTKBDCMD(true);
   MJ_KBD(true);
-  Serial.println("RESET");
+  mjSer.println("RESET");
 }
 
 /***************************************
@@ -1924,9 +2156,9 @@ void MJ_KBD(bool m) {
   }
   
   if(m)
-    Serial.println("'Keyboard Mode");
+    mjSer.println("'Keyboard Mode");
   else
-    Serial.println("'UART Mode");
+    mjSer.println("'UART Mode");
 }
 
 /***************************************
@@ -1994,7 +2226,7 @@ void MJ_DIGITALREAD(String pr) {
       return;
   } else {
     int v=digitalRead(pr.toInt());
-    Serial.println(v);//"'"+String(v));
+    mjSer.println(v);//"'"+String(v));
   }
 }
 
@@ -2019,9 +2251,63 @@ void MJ_ANALOGWRITE(String pio) {
     int p=pio.substring(0,ps).toInt();
     int io=pio.substring(ps+1).toInt();
     if(io<0) io=0; else if(io>255) io=255;
+    #ifdef ARDUINO_ESP8266_MODULE
     analogWrite(p,io);
+    #endif
   }
 }
+
+/***************************************
+ * IP to String
+ * IPを文字に
+ * 
+***************************************/
+
+String IPAddressToStr(IPAddress ip) {
+  char buf[13];
+  sprintf(buf, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+  return String(buf);
+}
+
+/***************************************
+ * 
+ * Draw QRcord of Station mode
+ * 
+****************************************/
+
+#ifdef hasDISP
+
+#ifdef ARDUINO_M5Stack_Core_ESP32
+extern int scrdiff;
+#endif
+
+void drawAPQRCode() {
+  String apip = "";
+  
+  if (staIP[0] >= 0x20 && staIP[0] != '?') {
+    apip = "http://" + IPAddressToStr(staIP) + "/";
+    
+    #ifdef ARDUINO_M5Stack_Core_ESP32
+      M5.Lcd.qrcode(apip,200,40+scrdiff,108,2);
+    #endif
+    #ifdef ARDUINO_M5StickC_ESP32
+      //M5.Lcd.qrcode("http://www.m5stack.com");
+      //M5.Lcd.qrcode(const char *string, uint16_t x = 50, uint16_t y = 10, uint8_t width = 220, uint8_t version = 6);
+      M5.Lcd.qrcode(apip,80,0,79,2);
+    #endif
+    /*
+    #ifdef hasOLED
+        display.setTextAlignment(TEXT_ALIGN_LEFT);
+        display.setFont(ArialMT_Plain_10);
+        display.drawString(0, 30, apip);
+        display.display();
+    #endif //hasOLED
+    */
+  }
+
+}
+
+#endif hasDISP
 
 /***************************************/
 /***************************************
@@ -2074,16 +2360,16 @@ bool handleFileRead(String path){
   if(path.endsWith("/")) path += "index.html";
   String contentType = getContentType(path);
   String pathWithGz = path + ".gz";
-  if(SPIFFS.exists(pathWithGz) || SPIFFS.exists(path)){
-    if(SPIFFS.exists(pathWithGz))
+  if(qbFS.exists(pathWithGz) || qbFS.exists(path)){ //if(SPIFFS.exists(pathWithGz) || SPIFFS.exists(path)){
+    if(qbFS.exists(pathWithGz)) //if(SPIFFS.exists(pathWithGz))
       path += ".gz";
-    File file = SPIFFS.open(path, "r");
+    File file = qbFS.open(path, "r"); //SPIFFS.open(path, "r");
     size_t sent = server.streamFile(file, contentType);
     file.close();
     return true;
   } else {
     if(path.indexOf("/ijcmd/")==0) {
-      //Serial.println("?\""+path+"\"");
+      //mjSer.println("?\""+path+"\"");
       String ijc=path.substring(7);
       ijc.replace("%20"," ");
       ijc.replace("%3Cbr /%3E","\n");
@@ -2102,13 +2388,13 @@ bool handleFileRead(String path){
         } else if(ijc.startsWith("RUN")) {
           sendKeyCode(0x105);
         } else {
-          Serial.println(ijc);
+          mjSer.println(ijc);
         }
       } else {
-        Serial.println(ijc);
+        mjSer.println(ijc);
       }
     #else
-      Serial.println(ijc);
+      mjSer.println(ijc);
     #endif
     
     } else if(path.indexOf("/ijkey/")==0) {
@@ -2118,20 +2404,20 @@ bool handleFileRead(String path){
       } else if(keyval>255) {
         keyval-=256;
       }
-      //Serial.println(keyval);
-      sendKeyCode(keyval);//Serial.write(keyval);
+      //mjSer.println(keyval);
+      sendKeyCode(keyval);//mjSer.write(keyval);
       
     } else if(path.indexOf("/ijctr/")==0) {
       int keyval=path.substring(7).toInt();
-      Serial.write(keyval);
-      delay(10);Serial.write(keyval);
+      mjSer.write(keyval);
+      delay(10);mjSer.write(keyval);
       
     } else if(path.indexOf("/mjcmd/")==0) {
       inStr=path.substring(7);
       inStr.replace("%20"," ");
       inStr.replace("%3Cbr /%3E","\n");
       inStr.replace("%3Cbr%3E","\n");
-      //Serial.println(inStr);
+      //mjSer.println(inStr);
       doMixJuice();
       
     } else if(path.indexOf("/qgkp/")==0) {
@@ -2169,7 +2455,7 @@ void udpStart(unsigned int lp) {
   }
   udp.begin(lp);//UDP_LocalPort
   delay(500);
-  Serial.println("'UDP started...");
+  mjSer.println("'UDP started...");
   isUDP=true;
   UDP_Read_Port=lp;
 }
@@ -2202,12 +2488,12 @@ void MJ_UDP_ReadPacket() {
     }
     */
     udp.read(packetBuffer, (rlen > UDP_PACKET_SIZE) ? UDP_PACKET_SIZE : rlen);
-    Serial.print("'");
+    mjSer.print("'");
     for (int i = 0; i < rlen; i++){
-      Serial.print(packetBuffer[i]);
+      mjSer.print((char*)packetBuffer[i]);
       delay(1);
     }
-    Serial.println("");
+    mjSer.println("");
   }
   #endif
 }
@@ -2221,16 +2507,16 @@ void MJ_UDP_WritePacket(String msg) {
   if(sc<1) {MJ_UDP_Write(msg); return;}
   IPAddress sip;
   if(!sip.fromString(msg.substring(0,sc))) {MJ_UDP_Write(msg); return;}
-  //Serial.println(msg.substring(0,sc));
+  //mjSer.println(msg.substring(0,sc));
   
   msg=msg.substring(sc+1);
   sc=msg.indexOf(" ");
   if(sc<1) {MJ_UDP_Write(msg); return;}
-  uint16 spt=msg.substring(0,sc).toInt();
-  //Serial.println(msg.substring(0,sc));
+  uint16_t spt=msg.substring(0,sc).toInt();
+  //mjSer.println(msg.substring(0,sc));
  
   msg=msg.substring(sc+1);
-  //Serial.println(msg);
+  //mjSer.println(msg);
  
   UDP_Write_IPAddress=sip;
   UDP_Write_Port=spt;
@@ -2239,9 +2525,9 @@ void MJ_UDP_WritePacket(String msg) {
 }
 
 void MJ_UDP_Write(String msg) {
-  //Serial.println(UDP_Write_IPAddress);
-  //Serial.println(UDP_Write_Port);
-  //Serial.println(msg);
+  //mjSer.println(UDP_Write_IPAddress);
+  //mjSer.println(UDP_Write_Port);
+  //mjSer.println(msg);
   
   // send a reply, to the IP address and port that sent us the packet we received
   udp.beginPacket(UDP_Write_IPAddress,UDP_Write_Port);//udp.remoteIP(), udp.remotePort());
@@ -2252,11 +2538,11 @@ void MJ_UDP_Write(String msg) {
 /*
 void MJ_Test(String msg) {
   int sc=msg.indexOf(" ");
-  if(sc<1) {Serial.println("Error..Is not IP.");return;}
+  if(sc<1) {mjSer.println("Error..Is not IP.");return;}
   IPAddress sip;
-  if(!sip.fromString(msg.substring(0,sc))) {Serial.println("Error..Is not IP.");}
-  //Serial.println(msg.substring(0,sc));
-  Serial.println("This is IP.");
+  if(!sip.fromString(msg.substring(0,sc))) {mjSer.println("Error..Is not IP.");}
+  //mjSer.println(msg.substring(0,sc));
+  mjSer.println("This is IP.");
 }
 */
 /***************************************/

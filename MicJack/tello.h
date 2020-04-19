@@ -2,6 +2,7 @@
 #define __TELLO_H__
 
 #include <Arduino.h>
+#include "MJSerial.h"
 
 //-------------
 // Fundermental
@@ -23,7 +24,7 @@ void Tello_UDP_Read(int n);
 // Queue
 
 typedef struct telloq {
-  uint32 w;
+  uint32_t w;
   String c;
   telloq *n;
   telloq *p;
@@ -34,7 +35,7 @@ void tello_loop();
 
 void initQueue();
 void clearQueue();
-telloq *addQueue(String c, uint32 w);
+telloq *addQueue(String c, uint32_t w);
 telloq *appendQueue(String c);
 void runQueue();
 void actionQueue();
@@ -47,5 +48,7 @@ void Tello_Queue_Command(String msg);
 
 void Tello_UDP_Write(String msg);
 void Tello_Direct_Command(String msg);
+
+extern MJSerial mjSer;
 
 #endif //__TELLO_H__

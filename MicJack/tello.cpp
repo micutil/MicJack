@@ -1,12 +1,14 @@
 #include "tello.h"
-#include <WiFiUdp.h>
+#include "MJSerial.h"
 
-WiFiUDP tudp[3];//tello command
+#include <EthernetUdp.h>//#include <WiFiUdp.h>
+EthernetUDP tudp[3];//WiFiUDP tudp[3];//tello command
+
 const IPAddress Tello_UDP_IPAddress{ 192,168,10,1 };
 const unsigned int Tello_UDP_RemotePort = 8889;
 const unsigned int Tello_UDP_LocalPort[] = { 8889, 8890, 1111 };
 //unsigned int Tello_UDP_ReadPort;
-const int Tello_UDP_PACKET_SIZE = UDP_TX_PACKET_MAX_SIZE;//256;
+const int Tello_UDP_PACKET_SIZE = 1024;//UDP_TX_PACKET_MAX_SIZE;//256;
 char tello_packetBuffer[Tello_UDP_PACKET_SIZE+1];
 bool isTello[]={ false, false, false };
 bool waitRes[]={ false, false, false };
@@ -14,7 +16,7 @@ bool showForce=false;
 bool showRes=false;
 bool telloSteam=false;
 bool telloBreak=false;
-const uint32 seqCmdDly=500;
+const uint32_t seqCmdDly=500;
 
 //-------------------------------------------------
 //-------------------------------------------------
@@ -35,7 +37,7 @@ bool tello_udp_start(int n, bool doCmd) {
   
   isTello[n]=(tudp[n].begin(Tello_UDP_LocalPort[n])==1);
   if(isTello[n]==false) {
-    if(showForce) Serial.println("'Error UDP connection...");
+    if(showForce) mjSer.println("'Error UDP connection...");
     return false;
   }
   //delay(seqCmdDly);
@@ -47,7 +49,7 @@ bool tello_udp_start(int n, bool doCmd) {
       case kState: msg="state"; break;
       case kVideo: msg="video"; break;
     }
-    Serial.println(msg+" UDP started...");
+    mjSer.println(msg+" UDP started...");
   }
   
   //isTello[n]=true;
@@ -86,7 +88,7 @@ void Break_Tello() {
 }
 
 void Wait_Tello_Res(int n) {
-  uint32 p=millis()+20000;
+  uint32_t p=millis()+20000;
   while(waitRes[n]&&p>millis()&&!telloBreak) {
     Tello_UDP_Read(n);
     delay(5);
@@ -100,11 +102,11 @@ void Tello_UDP_Read(int n) {
     waitRes[n]=false;
     tudp[n].read(tello_packetBuffer, (rlen > Tello_UDP_PACKET_SIZE) ? Tello_UDP_PACKET_SIZE : rlen);
     if(showForce||showRes) {
-      Serial.print("'");
+      mjSer.print("'");
       for (int i = 0; i < rlen; i++){
-        Serial.print(tello_packetBuffer[i]);
+        mjSer.print(tello_packetBuffer[i]);
       }
-      Serial.println("");
+      mjSer.println("");
       showRes=false;
     }
   }
@@ -116,12 +118,12 @@ void Tello_State_Read() {
   if((rlen = tudp[kState].parsePacket())) {
     waitRes[kState]=false;
     tudp[kState].read(tello_packetBuffer, (rlen > Tello_UDP_PACKET_SIZE) ? Tello_UDP_PACKET_SIZE : rlen);
-    Serial.print("'");
+    mjSer.print("'");
     for (int i = 0; i < rlen; i++){
-      Serial.print(tello_packetBuffer[i]);
+      mjSer.print(tello_packetBuffer[i]);
       //delay(1);
     }
-    Serial.println("");
+    mjSer.println("");
   }
   delay(1);
 }
@@ -134,14 +136,14 @@ void Tello_State_Read() {
 telloq *tq,*tl;
 bool isNewQueue=true;
 bool nowQrun=false;
-uint32 queueWait=0;
-uint32 forceQuit=0;
+uint32_t queueWait=0;
+uint32_t forceQuit=0;
 
-const uint32 commandwait=500;
-const uint32 takeoffwait=5000;
-const uint32 minimumwait=50;
-const uint32 maximumwait=14500;
-uint32 prevRec=0;
+const uint32_t commandwait=500;
+const uint32_t takeoffwait=5000;
+const uint32_t minimumwait=50;
+const uint32_t maximumwait=14500;
+uint32_t prevRec=0;
 
 void tello_setup() {
   initQueue();
@@ -202,7 +204,7 @@ void clearQueue() {
   }
 }
 
-telloq *addQueue(String c, uint32 w) { //appendQueue & wait time
+telloq *addQueue(String c, uint32_t w) { //appendQueue & wait time
   tl->w=w;
   tl->c=c;
   tl->n=new telloq;
@@ -214,7 +216,7 @@ telloq *addQueue(String c, uint32 w) { //appendQueue & wait time
 }
 
 telloq *appendQueue(String c) {
-  uint32 t=millis();//3000;
+  uint32_t t=millis();//3000;
   if(isNewQueue) {
     isNewQueue=false;
     addQueue("command",commandwait);
@@ -223,7 +225,7 @@ telloq *appendQueue(String c) {
   if(tl->p->w==0) tl->p->w=t-prevRec;
   if(tl->p->w<minimumwait) tl->p->w=minimumwait;
   if(tl->p->w>=maximumwait) tl->p->w=maximumwait;
-  //Serial.println(tl->p->w);
+  //mjSer.println(tl->p->w);
   tl->c=c;
   tl->n=new telloq;
   tl->n->p=tl;
@@ -235,7 +237,7 @@ telloq *appendQueue(String c) {
 
 void runQueue() {
   if(isTello[kCmd]==false) tello_udp_start(false);
-  uint32 t=millis();//3000;
+  uint32_t t=millis();//3000;
   telloq *tt=appendQueue("land");
   tt->w=500;
   delete(tt->n);
@@ -246,8 +248,8 @@ void runQueue() {
 void actionQueue() {
 
   telloq *n=tq->n;
-  //Serial.print("'");Serial.println(tq->c);
-  //Serial.print("'wait:");Serial.print(tq->w);Serial.print(" time:");Serial.print(millis());Serial.println("");
+  //mjSer.print("'");mjSer.println(tq->c);
+  //mjSer.print("'wait:");mjSer.print(tq->w);mjSer.print(" time:");mjSer.print(millis());mjSer.println("");
   
   nowQrun=false;//Qループ停止
   
@@ -383,8 +385,8 @@ void Tello_UDP_Write(String msg) {
   tudp[kCmd].beginPacket(Tello_UDP_IPAddress,Tello_UDP_RemotePort);//udp.remoteIP(), udp.remotePort());
   tudp[kCmd].write(msg.c_str());
   tudp[kCmd].endPacket();
-  if(showForce) { Serial.print("'"); Serial.println(tq->c); }
-  //Serial.print("'");Serial.println(msg);
+  if(showForce) { mjSer.print("'"); mjSer.println(tq->c); }
+  //mjSer.print("'");mjSer.println(msg);
   
   Wait_Tello_Res(kCmd);
 }
