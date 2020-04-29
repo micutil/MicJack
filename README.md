@@ -16,7 +16,11 @@ CC BY Michio Ono (Micono Utilities)
 - Kidspod; に対応したコマンド
 - Kidspod; にIchigonQuestのプログラムの受送信
 - Tello 操作コマンド
-- ESP32系にも対応：ESP32系モジュール版、M5Stack版、M5StickC版 **（ESP32系の説明は同梱のManual.pdfの「ESP32版の簡単な説明」に簡単に書いてあります。**
+- ESP32系にも対応：ESP32系モジュール版、M5Stack版、M5StickC版 
+- M5Stack / M5StickC で、CardKBユニットやFACESを使った文字入力
+
+**(ESP32系の説明は同梱のManual.pdfの「ESP32版の簡単な説明」に簡単に書いてあります)**
+
 
 <img src="image/ESP32.jpg" height="200">  <img src="image/M5Stack.jpg" height ="200"><br/>
 <img src="image/M5StickC.jpg" height ="100"> **M5StickC**<br/>
@@ -33,6 +37,12 @@ CC BY Michio Ono (Micono Utilities)
 
 **[更新内容]**
  
+v1.2.1b1 (2020/4/29)
+
+- (新規) MJ SETRTC (M5StickCのみ：RTCの時間を設定）、MJ GETRTC (日時を取得）コマンドを追加
+- (新規) M5Stack / M5StickC版で、CardKBユニットまたはFACESによる文字入力に対応
+- (修正) UDPのSoftAP接続に関しての不具合を修正した
+
 v1.2.0b1 (2020/4/19)
 
 - (新規) ESP32系（ESP-WROOM-32モジュール、M5Stack, M5StickC）版を作成
@@ -52,14 +62,14 @@ v1.0.1b2 (2018/10/10)
 v1.0.1b1 (2018/10/8)
 
 - (新規) MJ IJKBD追加:IchigoJamでキーボードモードを使う場合
--  (新規) MJ GETSHOME追加:GETHOMEのGETS対応版
+- (新規) MJ GETSHOME追加:GETHOMEのGETS対応版
 - (新規) MJ GETSLAST追加:GETLASTのGETS対応版
 
 ### コマンド一覧
 
 |コマンド名 |機能|
 |----------------|-------|
-| MJ APC / TJ APC / FP APC | WiFiアクセスポイントに接続 || MJ APD / TJ APD / FP APD | Wi-Fi接続を切断 | | MJ APL / TJ APL / FP APL | WiFiアクセスポイントの一覧を表示 || MJ APS / TJ APS / FP APS | WiFiアクセスポイントへの接続を確認 || MJ SSID | WiFiアクセスポイントのSSIDの表示、デフォルトのSSIDを設定 || MJ SOFTAP | SoftAPのSSID名とIPを表示、SSIDとパスワードを設定| MJ PWD | デフォルトのSSIDのパスワードを設定| MJ RGA / TJ RGA | WiFiアクセスポイントのSSIDとパスワードを登録| MJ RGC / TJ RGC | RGAで登録したWiFiアクセスポイントに登録番号で接続| MJ RGL / TJ RGL | REGAPで登録したWiFiアクセスポイントの一覧を表示| MJ RGD / TJ RGD | RGAで登録したWiFiアクセスポイントを消去| MJ LIP | ローカルIPを表示| MJ GET | HTTPでGET通信| MJ GETS | HTTPSでGET通信| MJ GETHOME | 設定したデフォルトページをGET通信| MJ GETSHOME | 設定したデフォルトページをGETS通信| MJ GETLAST | 最後に通信したページをGET通信| MJ GETSLAST | 最後に通信したページをGETS通信| MJ PROXY | Proxyの設定および表示| MJ PORT | ポート番号の設定および表示| MJ POST ... | HTTPでPOST送信| MJ POSTS ... | HTTPSでPOST送信| MJ PCT | HTTPSでPOST送信でのコンテントタイプを指定| MJ GKP | Kidspod.clubからHTTPでGET通信| MJ PKP | Kidspod.clubにHTTPでPOST送信| MJ QGKP | kidspod.clubからIchigonQuestのプログラムをHTTPでGET通信| MJ QPKP | Kidspod.clubにIchigonQuestのプログラムをHTTPでPOST送信| MJ QSEND | chigonQuestのHEXプログラムを送信します。| MJ UART | HTTPでの入力操作でUARTで送信| MJ KBD | HTTPでの入力操作でキーボード信号として送信| MJ IJKBD | IchigoJamでHTTPでの入力操作でキーボード信号として送信する場合| MJ SPW | HTTPでGET通信において、文字送信遅延の設定| MJ MACADDR | MACアドレスを表示| MJ MAC | MACアドレスを表示(MixJuiceと同じ表示形式)| MJ SLEEP | スリープ(節電モード)|| MJ PMODE | ESP-WROOM-02のピンモード設定| MJ DWRT| ESP-WROOM-02でdigitalWriteを実行| MJ DREAD | ESP-WROOM-02でdigitalReadを実行| MJ AWRT | ESP-WROOM-02でanalogWriteを実行| MJ AREAD | ESP-WROOM-02でanalogReadを実行| MJ MJVER | MicJackのバージョン番号を表示| MJ SVR | サーバーを起動| MJ UDP START | UDPを起動| MJ UDP STOP | UDPを停止| MJ UDP MSG | 最後に使ったリモートIP/PortにデータをUDPで送信| MJ UDP | 指定したリモートIP/PortにデータをUDPで送信| TJ INIT / FP INIT / TJ START / FP START | Tello操作を開始| TJ CLOSE | Tello操作を終了| TJ STATE | Telloの情報を取得| TJ RESON | Telloのコマンド実行後の結果を表示| TJ RESOFF | Telloのコマンド実行後の結果を非表示| TJ Qxxx | FPに準じたTelloのQueueコマンドを送信| TJ xxxx / TJ S xxxx | Telloのコマンドを送信
+| MJ APC / TJ APC / FP APC | WiFiアクセスポイントに接続 || MJ APD / TJ APD / FP APD | Wi-Fi接続を切断 | | MJ APL / TJ APL / FP APL | WiFiアクセスポイントの一覧を表示 || MJ APS / TJ APS / FP APS | WiFiアクセスポイントへの接続を確認 || MJ SSID | WiFiアクセスポイントのSSIDの表示、デフォルトのSSIDを設定 || MJ SOFTAP | SoftAPのSSID名とIPを表示、SSIDとパスワードを設定| MJ PWD | デフォルトのSSIDのパスワードを設定| MJ RGA / TJ RGA | WiFiアクセスポイントのSSIDとパスワードを登録| MJ RGC / TJ RGC | RGAで登録したWiFiアクセスポイントに登録番号で接続| MJ RGL / TJ RGL | REGAPで登録したWiFiアクセスポイントの一覧を表示| MJ RGD / TJ RGD | RGAで登録したWiFiアクセスポイントを消去| MJ LIP | ローカルIPを表示| MJ GET | HTTPでGET通信| MJ GETS | HTTPSでGET通信| MJ GETHOME | 設定したデフォルトページをGET通信| MJ GETSHOME | 設定したデフォルトページをGETS通信| MJ GETLAST | 最後に通信したページをGET通信| MJ GETSLAST | 最後に通信したページをGETS通信| MJ PROXY | Proxyの設定および表示| MJ PORT | ポート番号の設定および表示| MJ POST ... | HTTPでPOST送信| MJ POSTS ... | HTTPSでPOST送信| MJ PCT | HTTPSでPOST送信でのコンテントタイプを指定| MJ GKP | Kidspod.clubからHTTPでGET通信| MJ PKP | Kidspod.clubにHTTPでPOST送信| MJ QGKP | kidspod.clubからIchigonQuestのプログラムをHTTPでGET通信| MJ QPKP | Kidspod.clubにIchigonQuestのプログラムをHTTPでPOST送信| MJ QSEND | chigonQuestのHEXプログラムを送信します。| MJ UART | HTTPでの入力操作でUARTで送信| MJ KBD | HTTPでの入力操作でキーボード信号として送信| MJ IJKBD | IchigoJamでHTTPでの入力操作でキーボード信号として送信する場合| MJ SPW | HTTPでGET通信において、文字送信遅延の設定| MJ MACADDR | MACアドレスを表示| MJ MAC | MACアドレスを表示(MixJuiceと同じ表示形式)| MJ SLEEP | スリープ(節電モード)|| MJ PMODE | ESP-WROOM-02のピンモード設定| MJ DWRT| ESP-WROOM-02でdigitalWriteを実行| MJ DREAD | ESP-WROOM-02でdigitalReadを実行| MJ AWRT | ESP-WROOM-02でanalogWriteを実行| MJ AREAD | ESP-WROOM-02でanalogReadを実行| MJ MJVER | MicJackのバージョン番号を表示| MJ SVR | サーバーを起動| MJ UDP START | UDPを起動| MJ UDP STOP | UDPを停止| MJ UDP MSG | 最後に使ったリモートIP/PortにデータをUDPで送信| MJ UDP | 指定したリモートIP/PortにデータをUDPで送信| MJ SETRTC | RTCの時間を合わせます（M5StickCのみ）| MJ GETRTC | 日時時間を取得 引数=なし or 1〜9| TJ INIT / FP INIT | Tello操作を開始| TJ START / FP START | Tello操作を開始| TJ CLOSE | Tello操作を終了| TJ STATE | Telloの情報を取得| TJ RESON | Telloのコマンド実行後の結果を表示| TJ RESOFF | Telloのコマンド実行後の結果を非表示| TJ Qxxx | FPに準じたTelloのQueueコマンドを送信| TJ xxxx / TJ S xxxx | Telloのコマンドを送信
 
 ### ピンアサイン
 
