@@ -12,7 +12,7 @@
         "version": "v1.2",
         "path": "",
         "commands": [
-			"--chip esp32 --port %port --baud %baud --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 80m --flash_size detect 0xe000 %PATH\\bin/boot_app0.bin 0x1000 %PATH\\bin/bootloader_qio_80m.bin 0x10000 %PATH\\M5Stack/MicJack.ino.m5stack_core_esp32.bin 0x8000 %PATH\\bin/MicJack.ino.partitions.bin"
+			"--chip esp32 --port %port --baud %baud --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 80m --flash_size detect 0xe000 %PATH\\bin/boot_app0.bin 0x1000 %PATH\\bin/bootloader_qio_80m.bin 0x10000 %PATH\\M5Stack/MicJack.ino.m5stack_core_esp32_SD.bin 0x8000 %PATH\\bin/MicJack.ino.partitions.bin"
         ]
     },
     {
@@ -20,7 +20,7 @@
         "version": "v1.2",
         "path": "",
         "commands": [
-			"--chip esp32 --port %port --baud %baud --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 80m --flash_size detect 0xe000 %PATH\\bin/boot_app0.bin 0x1000 %PATH\\bin/bootloader_qio_80m.bin 0x10000 %PATH\\M5Stack/MicJack.ino.m5stack_core_esp32_spiffs.bin 0x8000 %PATH\\bin/MicJack.ino.partitions.bin 0x290000 %PATH\\bin/MicJack.spiffs.bin"
+			"--chip esp32 --port %port --baud %baud --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 80m --flash_size detect 0xe000 %PATH\\bin/boot_app0.bin 0x1000 %PATH\\bin/bootloader_qio_80m.bin 0x10000 %PATH\\M5Stack/MicJack.ino.m5stack_core_esp32.bin 0x8000 %PATH\\bin/MicJack.ino.partitions.bin 0x290000 %PATH\\bin/MicJack.spiffs.bin"
         ]
     },
     {
