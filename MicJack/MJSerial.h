@@ -2,6 +2,7 @@
 #define __MJSERIAL_H__
 
 #include "MJBoard.h"
+#include <WebServer.h>
 
 #ifdef ARDUINO_ESP32_MODULE
   #define mjMain  Serial2 //Default RX=GPIO16, TX=GPIO17
@@ -42,7 +43,7 @@ class MJSerial {
   MJSerial() {
     mjMain.begin(115200);
     while (!mjMain) { ; }
-    #ifdef ARDUINO_ARCH_ESP32
+    #if defined(ARDUINO_ESP32_MODULE) || defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32) //ARDUINO_ARCH_ESP32
     mjSub.begin(115200);
     while (!mjSub) { ; }
     #endif

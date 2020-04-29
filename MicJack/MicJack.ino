@@ -6,6 +6,7 @@
  *  CC BY Michio Ono. http://ijutilities.micutil.com
  *  
  *  *Version Information
+ *  2020/ 4/29  ver 1.2.1b1 Fixed UDP, CardKB for M5Stack/M5StickC
  *  2020/ 4/19  ver 1.2.0b1 ESP32 Module, M5Stack, M5StickC version
  *  2020/ 3/22  ver 1.1.0b2 UDP, TJ, FP (200307:1.1.0b1)
  *  2018/10/10  ver 1.0.1b2
@@ -40,7 +41,11 @@
   #include <ESPmDNS.h>
   const int DWidth=320;
   const int DHeight=240;
+
 #endif
+
+#include "time.h"
+const String ntpServer = "ntp.jst.mfeed.ad.jp";
 
 #ifdef ARDUINO_M5StickC_ESP32
   #define hasDISP
@@ -48,6 +53,32 @@
   #include <ESPmDNS.h>
   const int DWidth=160;
   const int DHeight=80;
+  //#include "time.h"
+  //const char* ntpServer = "ntp.jst.mfeed.ad.jp";
+  //RTC_TimeTypeDef RTC_TimeStruct;
+  //RTC_DateTypeDef RTC_DateStruct;
+  bool initRTC=false;
+#endif
+
+#if defined(ARDUINO_M5Stack_Core_ESP32)
+#define FACES_ADDR     0X08
+#ifdef FACES_ADDR
+  #define FACES_ADDR     0X08
+  #define FACES_INT      5
+#endif //FACES_ADDR
+#endif //ARDUINO_M5Stack_Core_ESP32
+
+#if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+#define CARDKB_ADDR 0x5F //Card Keyboard Unit
+//Joy Stick Unit
+//#define JOY_ADDR 0x52
+#ifdef JOY_ADDR
+  uint8_t x_data, px_data;
+  uint8_t y_data, py_data;
+  uint8_t button_data, pbutton_data;
+  char data[100];
+#endif //JOY_ADDR
+
 #endif
 
 #include <WebServer.h>
@@ -70,7 +101,7 @@
 MJSerial mjSer;
 #endif
 
-const String MicJackVer="MicJack-1.2.0b1";
+const String MicJackVer="MicJack-1.2.1b1";
 const String TelloJackVer="TelloJack-1.0.0b1";
 const String MJVer="MixJuice-1.3.0";
 const int sleepTimeSec = 60;
@@ -100,7 +131,7 @@ typedef struct APCONFIG {
 };
 APCONFIG apcbuf;
 
-String aplist[10];
+String aplist[20];
 String lastSSID="";
 String lastPASS="";
 
@@ -150,16 +181,23 @@ const char* mjname = "micjack";
 /*** UDP ***/
 #define supportUDP
 #ifdef supportUDP
-  //#define initStartUDP
-  #include <EthernetUdp.h>//#include <WiFiUdp.h>
-  EthernetUDP udp;//WiFiUDP udp;
-  unsigned int UDP_LocalPort = 20001;//10000;
-  unsigned int UDP_Read_Port = UDP_LocalPort;
+  #define initStartUDP
+  #include <WiFiUdp.h>
+  WiFiUDP udp;
+  const IPAddress udpip(192, 168, 20, 1);       // IPアドレス(ゲートウェイも兼ねる)
+  const IPAddress udpsubnet(255, 255, 255, 0); // サブネットマスク
+  unsigned int UDP_LocalPort = 20001;//kLocalPort
+  unsigned int UDP_Read_Port = 20001;//kRmoteUdpPort
   IPAddress UDP_Write_IPAddress;
   unsigned int UDP_Write_Port;
   //unsigned char UDP_Minimum_Packet = 1;
   boolean isUDP=false;
-  const int UDP_PACKET_SIZE = 1024;//UDP_TX_PACKET_MAX_SIZE;
+  #ifdef ARDUINO_ESP8266_MODULE
+  const int UDP_PACKET_SIZE = UDP_TX_PACKET_MAX_SIZE;//8192;//UDP_TX_PACKET_MAX_SIZE=8192;
+  #else
+  const int UDP_TX_PACKET_MAX_SIZE=8192;
+  const int UDP_PACKET_SIZE = UDP_TX_PACKET_MAX_SIZE;//8192;
+  #endif
   char packetBuffer[UDP_PACKET_SIZE+1];
 #endif
 
@@ -342,6 +380,131 @@ bool sendKeyCode(int key) {
   return false;
 }
 
+/**********************************
+ * RTC / TIME
+ * 
+ * 
+***********************************/
+
+#ifdef ARDUINO_M5StickC_ESP32
+
+void resetRTC(String ts) {
+  // Set ntp time to local
+  if(ts.length()<5) ts=ntpServer;
+  configTime(9 * 3600, 0, ts.c_str());
+
+  // Get local time
+  struct tm timeInfo;
+  if (getLocalTime(&timeInfo)) {
+    //M5.Lcd.print("NTP : ");
+    //M5.Lcd.println(ntpServer);
+ 
+    // Set RTC time
+    RTC_TimeTypeDef TimeStruct;
+    TimeStruct.Hours   = timeInfo.tm_hour;
+    TimeStruct.Minutes = timeInfo.tm_min;
+    TimeStruct.Seconds = timeInfo.tm_sec;
+    M5.Rtc.SetTime(&TimeStruct);
+    
+    RTC_DateTypeDef DateStruct;
+    DateStruct.WeekDay = timeInfo.tm_wday;
+    DateStruct.Month = timeInfo.tm_mon + 1;
+    DateStruct.Date = timeInfo.tm_mday;
+    DateStruct.Year = timeInfo.tm_year + 1900;
+    M5.Rtc.SetData(&DateStruct);
+
+    initRTC=true;
+  }
+}
+
+void getRTC(int n) {
+  //int n=s.toInt();
+  
+  RTC_DateTypeDef ds;
+  RTC_TimeTypeDef ts;
+  
+  M5.Rtc.GetData(&ds);
+  M5.Rtc.GetTime(&ts);
+
+  switch(n) {
+    case 1: Serial2.printf("'%04d/n",ds.Year); break;
+    case 2: Serial2.printf("'%02d/n",ds.Month); break;
+    case 3: Serial2.printf("'%02d/n",ds.Date); break;
+    
+    case 4: Serial2.printf("'%02d/n",ts.Hours); break;
+    case 5: Serial2.printf("'%02d/n",ts.Minutes); break;
+    case 6: Serial2.printf("'%02d/n",ts.Seconds); break;
+    
+    case 7: Serial2.printf("'%d/n",ds.WeekDay); break;//0=Sun,1=Mon....
+    case 8: Serial2.printf("'%04d/%02d/%02d\n",ds.Year,ds.Month,ds.Date); break;
+    case 9: Serial2.printf("'%02d:%02d:%02d\n",ts.Hours,ts.Minutes,ts.Seconds); break;
+    default://case 0: 
+      Serial2.printf("'%04d/%02d/%02d %02d:%02d:%02d\n",ds.Year,ds.Month,ds.Date,ts.Hours,ts.Minutes,ts.Seconds);
+      break;
+  }
+  //Serial2.printf(s);
+}
+
+#else
+
+void getRTC(int n) {
+  // Set ntp time to local
+  //if(ts.length()<5) ts=ntpServer;
+  #define JST 3600* 9
+
+  // Get local time
+  #if defined(ARDUINO_ESP8266_MODULE)
+  configTime( JST, 0, "ntp.nict.jp", ntpServer.c_str());
+  time_t t=time(NULL);
+  struct tm *tp=localtime(&t);
+  if(tp) {
+    int tsHours   = tp->tm_hour;
+    int tsMinutes = tp->tm_min;
+    int tsSeconds = tp->tm_sec;
+    
+    int dsWeekDay = tp->tm_wday;
+    int dsMonth = tp->tm_mon + 1;
+    int dsDate = tp->tm_mday;
+    int dsYear = tp->tm_year+1900;
+
+  #else
+  configTime(JST, 0, ntpServer.c_str());
+  struct tm ti;//,*tp; tp=&ti;
+  if(getLocalTime(&ti)) {
+    //RTC_DateTypeDef ds;
+    //RTC_TimeTypeDef ts;
+    int tsHours   = ti.tm_hour;
+    int tsMinutes = ti.tm_min;
+    int tsSeconds = ti.tm_sec;
+    
+    int dsWeekDay = ti.tm_wday;
+    int dsMonth = ti.tm_mon + 1;
+    int dsDate = ti.tm_mday;
+    int dsYear = ti.tm_year+1900;
+  #endif
+
+    switch(n) {
+      case 1: mjMain.printf("'%04d/n",dsYear); break;
+      case 2: mjMain.printf("'%02d/n",dsMonth); break;
+      case 3: mjMain.printf("'%02d/n",dsDate); break;
+      
+      case 4: mjMain.printf("'%02d/n",tsHours); break;
+      case 5: mjMain.printf("'%02d/n",tsMinutes); break;
+      case 6: mjMain.printf("'%02d/n",tsSeconds); break;
+      
+      case 7: mjMain.printf("'%d/n",dsWeekDay); break;//0=Sun,1=Mon....
+      case 8: mjMain.printf("'%04d/%02d/%02d\n",dsYear,dsMonth,dsDate); break;
+      case 9: mjMain.printf("'%02d:%02d:%02d\n",tsHours,tsMinutes,tsSeconds); break;
+      default://case 0: 
+        mjMain.printf("'%04d/%02d/%02d %02d:%02d:%02d\n",dsYear,dsMonth,dsDate,tsHours,tsMinutes,tsSeconds);
+        break;
+    }
+  }
+  //Serial2.printf(s);
+}
+
+#endif /ARDUINO_M5StickC_ESP32
+
 /************************************
  * Initial Set up
  * 
@@ -353,11 +516,15 @@ void setup() {
   #endif
 
   #ifdef ARDUINO_M5StickC_ESP32
-    M5.Lcd.setRotation(3); // Must be setRotation(0) for this sketch to work correctly //for M5StickC
+    M5.Lcd.setRotation(1); // Must be setRotation(0) for this sketch to work correctly //for M5StickC
     Serial2.begin(115200, SERIAL_8N1, 0, 26); // EXT_IO
   #endif
 
-  //mjSer.begin(74880);
+  #if defined(CARDKB_ADDR) || defined(JOY_ADDR) || defined(FACES_ADDR)
+    Wire.begin();
+  #endif 
+
+ //mjSer.begin(74880);
   /*
   mjSer.begin(115200);
   while (!mjSer) { ; }
@@ -384,7 +551,6 @@ void setup() {
   mjSer.println("NEW");delay(100);
   mjSer.println("CLS");delay(100);
   mjSer.println("");
-  mjSer.println("");
 
   #ifdef useMJLED
   #if defined(ARDUINO_ESP8266_MODULE) || defined(ARDUINO_ESP32_MODULE)
@@ -398,11 +564,22 @@ void setup() {
   #endif
   #endif //useMJLED
 
+  #if defined(CARDKB_ADDR) || defined(JOY_ADDR)
+  pinMode(5, INPUT);
+  digitalWrite(5, HIGH);
+  #endif
+
+  #if defined(FACES_ADDR)
+  pinMode(FACES_INT, INPUT_PULLUP);
+  #endif
+
+  //Load setting
   LoadAPConfig();
-  
-  // Set WiFi to station mode
-  WiFi.mode(WIFI_STA);
-  mjSer.println("");
+
+  //Set WiFi to station mode
+  WiFi.mode(WIFI_AP_STA);//WIFI_AP_STA, WIFI_STA
+
+  //Show MicJack Information
   mjSer.println("'"+MJVer);
   mjSer.println("'"+MicJackVer);
   mjSer.println("'"+TelloJackVer);
@@ -426,14 +603,16 @@ void setup() {
   }
 */
 
-  /* APモード */
+  
+  /* Soft APモード開始 */
   softApStart();
 
   /* HTTP server */
   serverStart();
   
-  /* 自動接続 */
-  WiFi.disconnect();//一回切断した後に接続
+  /* ステーションモード自動接続 */
+  //一回切断した後に接続
+  WiFi.disconnect();
   MJ_APC("");//MJ_APLAPC();
   
   #ifdef initStartUDP
@@ -482,9 +661,10 @@ void setup() {
   
 #endif
 
+  //Serial.println(UDP_PACKET_SIZE,DEC);
   mjSer.println("'Ready to go!");
   mjSer.println("");
-
+  
 }
 
 /************************************
@@ -495,6 +675,8 @@ void setup() {
 
 void softApStart() {
   WiFi.softAP(apcbuf.softap_ssid,apcbuf.softap_pass);
+  delay(100);
+  WiFi.softAPConfig(udpip,udpip,udpsubnet);
   delay(500);
   mySoftAPIP = WiFi.softAPIP();
   String sn="";sn=String(apcbuf.softap_ssid);
@@ -560,6 +742,41 @@ void OTAStart() {
 #endif
 
 /************************************
+ * CardKB / FACES
+ * 
+ ************************************/
+
+#if defined(CARDKB_ADDR) || defined(FACES_ADDR)
+void getKeyData(int kb_add) {
+  Wire.requestFrom(kb_add, 1);
+  while(Wire.available())
+  {
+    char c = Wire.read(); // receive a byte as characterif
+    if (c != 0)
+    {
+      switch(c) {
+        case 0x0D: c=10; break;//Return
+        case 0xB4: c=28; break;//left
+        case 0xB7: c=29; break;//right
+        case 0xB5: c=30; break;//up
+        case 0xB6: c=31; break;//down
+      }
+      Serial.println(c,HEX);
+      #ifdef useKbd
+      if(kbdMode) {
+        sendKeyCode(c);
+      } else {
+        mjSer.print(c);
+      }
+      #else
+        mjSer.print(c);
+      #endif    
+    }
+  }
+}
+#endif
+
+/************************************
  * Event loop
  * 
  ************************************/
@@ -594,9 +811,12 @@ void loop() {
 
   #ifdef ARDUINO_M5Stack_Core_ESP32
   if(M5.BtnC.wasPressed()) {
-    
+    M5.powerOFF();
   }
   #endif
+  #ifdef ARDUINO_M5StickC_ESP32
+  if(M5.Axp.GetBtnPress()==2) esp_restart();
+  #endif //ARDUINO_M5StickC_ESP32
 
   #ifdef supportOTA
     ArduinoOTA.handle();
@@ -699,6 +919,17 @@ void loop() {
     if(isUDP) MJ_UDP_ReadPacket();
     tello_loop();
   #endif
+
+  //キーボードユニット
+  #ifdef CARDKB_ADDR
+  getKeyData(CARDKB_ADDR);
+  #endif //CARDKB_ADDR
+  
+  #ifdef FACES_ADDR
+  if(digitalRead(FACES_INT) == LOW) {
+    getKeyData(FACES_ADDR);
+  }
+  #endif //FACES_ADDR
 
   // Wait a bit before scanning again
   delay(1);
@@ -913,9 +1144,17 @@ void doMixJuice() {
   } else if(cs.startsWith("MJ UART")) {
     /*** Input Mode ***/ MJ_KBD(false);
   
-//   } else if(cs.startsWith("MJ SERVER") || cs.startsWith("MJ SVR")) {
-//     /*** Sever Start ***/ serverStart();
+//} else if(cs.startsWith("MJ SERVER") || cs.startsWith("MJ SVR")) {
+//  /*** Sever Start ***/ serverStart();
 
+  #ifdef ARDUINO_M5StickC_ESP32
+  } else if(cs.startsWith("MJ SETRTC")) {
+    /*** RTCをリセット ***/ resetRTC(inStr.substring(10));
+    
+  #endif //ARDUINO_M5StickC_ESP32
+  } else if(cs.startsWith("MJ GETRTC")) {
+    /*** RTCデータを取得 ***/ getRTC(inStr.substring(7).toInt());
+    
   #ifdef supportUDP
   } else if(cs.startsWith("MJ UDP START")) {
     /*** UDP Start ***/ MJ_UDP_Start(inStr.substring(13));
@@ -1074,6 +1313,9 @@ void MJ_APC_SSID_PSSS(String tss, String tps) {
     mjSer.print(mjname);mjSer.println(".local/");
     delay(500); mjSer.println("");
 
+    #ifdef ARDUINO_M5StickC_ESP32
+      if(initRTC==false) resetRTC("");
+    #endif //ARDUINO_M5StickC_ESP32
   }
 }
 
@@ -1269,7 +1511,7 @@ void MJ_SOFTAP(String ssidpwd) {
   if(sc<=0) {/*** 文字がない場合 ***/
     ;
   } else if(ps<0) {/*** スペースがない場合 ***/
-    ;
+    tss=sc;//でtps=""
   } else {
     tss=ssidpwd.substring(0,ps);
     tps=ssidpwd.substring(ps+1);
@@ -1278,10 +1520,11 @@ void MJ_SOFTAP(String ssidpwd) {
   //SetSoftAP(tss,tps);
   int n=tss.length();
   int m=tps.length();
-  if(n>0&&m<8) {
+  /*
+  if(n>0&&m<8) {//パスワードがなしでもOKとする
     mjSer.println("'Pass needs more than 8chrs..");
     delay(1500);
-  } else if(n<=0||m<=0) {
+  } else */if(n<=0&&m<=0) {//引数がない場合は、情報表示
     String softap_ssid="";
     softap_ssid=String(apcbuf.softap_ssid);
     mjSer.println("'AP: "+softap_ssid);delay(500);
@@ -2448,9 +2691,10 @@ bool handleFileRead(String path){
 #ifdef supportUDP
 void udpStart(unsigned int lp) {
   if(isUDP) {
-    if(lp==UDP_Read_Port) return;
+    if(lp==UDP_Read_Port) return;//?
     udp.stop();
     isUDP=false;
+    UDP_Read_Port=UDP_LocalPort;
     delay(500);
   }
   udp.begin(lp);//UDP_LocalPort
@@ -2478,22 +2722,30 @@ void MJ_UDP_Start(String pt) {
  *  MJ_UDP_Packet
 */
 
-void MJ_UDP_ReadPacket() {
+void MJ_UDP_ReadPacket() {  
   #ifdef supportUDP
-  unsigned int rlen;
-  if((rlen = udp.parsePacket())) {
+  unsigned int rlen=udp.parsePacket();
+  if(rlen) {
     /*
     while(rlen<UDP_Minimum_Packet-1) {
       rlen = udp.parsePacket();
     }
     */
     udp.read(packetBuffer, (rlen > UDP_PACKET_SIZE) ? UDP_PACKET_SIZE : rlen);
-    mjSer.print("'");
-    for (int i = 0; i < rlen; i++){
-      mjSer.print((char*)packetBuffer[i]);
+    //mjSer.print("'");
+    for (int i=0; i<rlen; i++){
+      #ifdef useKbd
+      if(kbdMode) {
+        sendKeyCode(packetBuffer[i]);
+      } else {
+        mjSer.print(packetBuffer[i]);
+      }
+      #else
+      mjSer.print(packetBuffer[i]);
+      #endif
       delay(1);
     }
-    mjSer.println("");
+    //mjSer.println("");
   }
   #endif
 }
@@ -2531,7 +2783,8 @@ void MJ_UDP_Write(String msg) {
   
   // send a reply, to the IP address and port that sent us the packet we received
   udp.beginPacket(UDP_Write_IPAddress,UDP_Write_Port);//udp.remoteIP(), udp.remotePort());
-  udp.write(msg.c_str());
+  //udp.write(msg.c_str());
+  udp.print(msg.c_str());
   udp.endPacket();  
 }
 

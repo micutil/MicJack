@@ -1,14 +1,29 @@
 #include "tello.h"
 #include "MJSerial.h"
 
-#include <EthernetUdp.h>//#include <WiFiUdp.h>
-EthernetUDP tudp[3];//WiFiUDP tudp[3];//tello command
+/*
+#include <WiFi.h>
+#include <WiFiUDP.h>
+WiFiUDP tudp[3];//tello command
+*/
+
+#include <WiFiUdp.h>
+WiFiUDP tudp[3];
+
 
 const IPAddress Tello_UDP_IPAddress{ 192,168,10,1 };
 const unsigned int Tello_UDP_RemotePort = 8889;
 const unsigned int Tello_UDP_LocalPort[] = { 8889, 8890, 1111 };
 //unsigned int Tello_UDP_ReadPort;
-const int Tello_UDP_PACKET_SIZE = 1024;//UDP_TX_PACKET_MAX_SIZE;//256;
+
+  #ifdef ARDUINO_ESP8266_MODULE
+  const int Tello_UDP_PACKET_SIZE = UDP_TX_PACKET_MAX_SIZE;//8192;//UDP_TX_PACKET_MAX_SIZE=8192;
+  #else
+  const int UDP_TX_PACKET_MAX_SIZE=8192;
+  const int Tello_UDP_PACKET_SIZE = UDP_TX_PACKET_MAX_SIZE;//8192;
+  #endif
+  //const int Tello_UDP_PACKET_SIZE = UDP_TX_PACKET_MAX_SIZE;//1024;//UDP_TX_PACKET_MAX_SIZE;//256;
+  
 char tello_packetBuffer[Tello_UDP_PACKET_SIZE+1];
 bool isTello[]={ false, false, false };
 bool waitRes[]={ false, false, false };
@@ -383,7 +398,7 @@ void Tello_UDP_Write(String msg) {
   
   waitRes[kCmd]=true;
   tudp[kCmd].beginPacket(Tello_UDP_IPAddress,Tello_UDP_RemotePort);//udp.remoteIP(), udp.remotePort());
-  tudp[kCmd].write(msg.c_str());
+  tudp[kCmd].print(msg.c_str());//write(msg.c_str());//write or perint
   tudp[kCmd].endPacket();
   if(showForce) { mjSer.print("'"); mjSer.println(tq->c); }
   //mjSer.print("'");mjSer.println(msg);
