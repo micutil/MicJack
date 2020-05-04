@@ -1,11 +1,12 @@
 /*
  *  MicJack
-
+WebServer
  *  MixJuice compatible IoT interface module for IchigoJam with ESP-WROOM-02
  *  
  *  CC BY Michio Ono. http://ijutilities.micutil.com
  *  
  *  *Version Information
+ *  2020/ 5/ 5  ver 1.2.2b1 LED信号読取り、M5StickCのキーボードモード対応
  *  2020/ 4/29  ver 1.2.1b1 Fixed UDP, CardKB for M5Stack/M5StickC
  *  2020/ 4/19  ver 1.2.0b1 ESP32 Module, M5Stack, M5StickC version
  *  2020/ 3/22  ver 1.1.0b2 UDP, TJ, FP (200307:1.1.0b1)
@@ -32,6 +33,10 @@
 #ifdef ARDUINO_ESP32_MODULE
   #define hasDISP
   #include <ESPmDNS.h>
+  const int ijLED=15;
+  const int espLED=2;
+  #define LED_OFF  LOW
+  #define LED_ON HIGH
 #endif
 
 #ifdef ARDUINO_M5Stack_Core_ESP32
@@ -41,6 +46,10 @@
   #include <ESPmDNS.h>
   const int DWidth=320;
   const int DHeight=240;
+  const int ijLED=5;
+  const int espLED=2;
+  #define LED_OFF  LOW
+  #define LED_ON HIGH
 
 #endif
 
@@ -58,6 +67,10 @@ const String ntpServer = "ntp.jst.mfeed.ad.jp";
   //RTC_TimeTypeDef RTC_TimeStruct;
   //RTC_DateTypeDef RTC_DateStruct;
   bool initRTC=false;
+  const int ijLED=36;
+  const int espLED=10;
+  #define LED_OFF HIGH
+  #define LED_ON  LOW
 #endif
 
 #if defined(ARDUINO_M5Stack_Core_ESP32)
@@ -81,7 +94,7 @@ const String ntpServer = "ntp.jst.mfeed.ad.jp";
 
 #endif
 
-#include <WebServer.h>
+//#include <WebServer.h>
 #include <WiFiClientSecure.h>
 #include <EEPROM.h>
 #include <FS.h>
@@ -97,15 +110,16 @@ const String ntpServer = "ntp.jst.mfeed.ad.jp";
 #endif //useSD or useSPIFFS
 
 #include "MJSerial.h"
-#ifndef ARDUINO_M5StickC_ESP32
+//#ifndef ARDUINO_M5StickC_ESP32
 MJSerial mjSer;
-#endif
+//#endif
 
-const String MicJackVer="MicJack-1.2.1b1";
+const String MicJackVer="MicJack-1.2.2b1";
 const String TelloJackVer="TelloJack-1.0.0b1";
 const String MJVer="MixJuice-1.3.0";
 const int sleepTimeSec = 60;
 
+bool printToSub=true;
 String inStr = ""; // a string to hold incoming data
 boolean stringComplete = false;  // whether the string is complete
 
@@ -162,11 +176,7 @@ int spn=kspn;
 /*** Use ccess Status LED ***/
 #define useMJLED
 #ifdef useMJLED
-  #if defined(ARDUINO_M5StickC_ESP32)
-  const int connLED=10; //Green
-  #else
   const int connLED=12; //Green
-  #endif
   const int postLED=4;  //Yellow
   const int getLED=5;   //Red
 #endif
@@ -231,8 +241,10 @@ bool kbdMode=false;
   #define KB_CLK      21 // 0   // A4  // PS/2 CLK  IchigoJamのKBD1に接続 //21//
   #define KB_DATA     22 // 15  // A5  // PS/2 DATA IchigoJamのKBD2に接続 //22//
 #elif defined(ARDUINO_M5StickC_ESP32)
-  #define KB_CLK      21 // 0   // A4  // PS/2 CLK  IchigoJamのKBD1に接続 //21//
-  #define KB_DATA     22 // 15  // A5  // PS/2 DATA IchigoJamのKBD2に接続 //22//
+  //Grove端子 SDA:IO32, SCL:IO33
+  //Wire.begin(32, 33);
+  #define KB_CLK      33 // 0   // A4  // PS/2 CLK  IchigoJamのKBD1に接続 //21//
+  #define KB_DATA     32 // 15  // A5  // PS/2 DATA IchigoJamのKBD2に接続 //22//
 #elif defined(ARDUINO_ESP8266_MODULE)
   #define KB_CLK      13 // 0   // A4  // PS/2 CLK  IchigoJamのKBD1に接続 //21//
   #define KB_DATA     16 // 15  // A5  // PS/2 DATA IchigoJamのKBD2に接続 //22//
@@ -426,22 +438,24 @@ void getRTC(int n) {
   M5.Rtc.GetData(&ds);
   M5.Rtc.GetTime(&ts);
 
+  char nichiji[50];
   switch(n) {
-    case 1: Serial2.printf("'%04d/n",ds.Year); break;
-    case 2: Serial2.printf("'%02d/n",ds.Month); break;
-    case 3: Serial2.printf("'%02d/n",ds.Date); break;
+    case 1: sprintf(nichiji,"'%04d/n",ds.Year); break; 
+    case 2: sprintf(nichiji,"'%02d/n",ds.Month); break;
+    case 3: sprintf(nichiji,"'%02d/n",ds.Date); break;
     
-    case 4: Serial2.printf("'%02d/n",ts.Hours); break;
-    case 5: Serial2.printf("'%02d/n",ts.Minutes); break;
-    case 6: Serial2.printf("'%02d/n",ts.Seconds); break;
+    case 4: sprintf(nichiji,"'%02d/n",ts.Hours); break;
+    case 5: sprintf(nichiji,"'%02d/n",ts.Minutes); break;
+    case 6: sprintf(nichiji,"'%02d/n",ts.Seconds); break;
     
-    case 7: Serial2.printf("'%d/n",ds.WeekDay); break;//0=Sun,1=Mon....
-    case 8: Serial2.printf("'%04d/%02d/%02d\n",ds.Year,ds.Month,ds.Date); break;
-    case 9: Serial2.printf("'%02d:%02d:%02d\n",ts.Hours,ts.Minutes,ts.Seconds); break;
+    case 7: sprintf(nichiji,"'%d/n",ds.WeekDay); break;//0=Sun,1=Mon....
+    case 8: sprintf(nichiji,"'%04d/%02d/%02d\n",ds.Year,ds.Month,ds.Date); break;
+    case 9: sprintf(nichiji,"'%02d:%02d:%02d\n",ts.Hours,ts.Minutes,ts.Seconds); break;
     default://case 0: 
-      Serial2.printf("'%04d/%02d/%02d %02d:%02d:%02d\n",ds.Year,ds.Month,ds.Date,ts.Hours,ts.Minutes,ts.Seconds);
+      sprintf(nichiji,"'%04d/%02d/%02d %02d:%02d:%02d\n",ds.Year,ds.Month,ds.Date,ts.Hours,ts.Minutes,ts.Seconds);
       break;
   }
+  mjSer.print(nichiji);
   //Serial2.printf(s);
 }
 
@@ -483,22 +497,24 @@ void getRTC(int n) {
     int dsYear = ti.tm_year+1900;
   #endif
 
+    char nichiji[50];
     switch(n) {
-      case 1: mjMain.printf("'%04d/n",dsYear); break;
-      case 2: mjMain.printf("'%02d/n",dsMonth); break;
-      case 3: mjMain.printf("'%02d/n",dsDate); break;
+      case 1: sprintf(nichiji,"'%04d/n",dsYear); break;
+      case 2: sprintf(nichiji,"'%02d/n",dsMonth); break;
+      case 3: sprintf(nichiji,"'%02d/n",dsDate); break;
       
-      case 4: mjMain.printf("'%02d/n",tsHours); break;
-      case 5: mjMain.printf("'%02d/n",tsMinutes); break;
-      case 6: mjMain.printf("'%02d/n",tsSeconds); break;
+      case 4: sprintf(nichiji,"'%02d/n",tsHours); break;
+      case 5: sprintf(nichiji,"'%02d/n",tsMinutes); break;
+      case 6: sprintf(nichiji,"'%02d/n",tsSeconds); break;
       
-      case 7: mjMain.printf("'%d/n",dsWeekDay); break;//0=Sun,1=Mon....
-      case 8: mjMain.printf("'%04d/%02d/%02d\n",dsYear,dsMonth,dsDate); break;
-      case 9: mjMain.printf("'%02d:%02d:%02d\n",tsHours,tsMinutes,tsSeconds); break;
+      case 7: sprintf(nichiji,"'%d/n",dsWeekDay); break;//0=Sun,1=Mon....
+      case 8: sprintf(nichiji,"'%04d/%02d/%02d\n",dsYear,dsMonth,dsDate); break;
+      case 9: sprintf(nichiji,"'%02d:%02d:%02d\n",tsHours,tsMinutes,tsSeconds); break;
       default://case 0: 
-        mjMain.printf("'%04d/%02d/%02d %02d:%02d:%02d\n",dsYear,dsMonth,dsDate,tsHours,tsMinutes,tsSeconds);
+        sprintf(nichiji,"'%04d/%02d/%02d %02d:%02d:%02d\n",dsYear,dsMonth,dsDate,tsHours,tsMinutes,tsSeconds);
         break;
     }
+    mjSer.print(nichiji);
   }
   //Serial2.printf(s);
 }
@@ -517,9 +533,16 @@ void setup() {
 
   #ifdef ARDUINO_M5StickC_ESP32
     M5.Lcd.setRotation(1); // Must be setRotation(0) for this sketch to work correctly //for M5StickC
+    Serial.begin(115200);
+    while (!mjSub) { ; }
     Serial2.begin(115200, SERIAL_8N1, 0, 26); // EXT_IO
+    while (!mjMain) { ; }
   #endif
 
+  #ifdef ARDUINO_ESP8266_MODULE
+    printToSub=false;
+  #endif
+  
   #if defined(CARDKB_ADDR) || defined(JOY_ADDR) || defined(FACES_ADDR)
     Wire.begin();
   #endif 
@@ -553,16 +576,18 @@ void setup() {
   mjSer.println("");
 
   #ifdef useMJLED
-  #if defined(ARDUINO_ESP8266_MODULE) || defined(ARDUINO_ESP32_MODULE)
-    pinMode(connLED, OUTPUT);//1
-    pinMode(postLED, OUTPUT);//2
-    pinMode(getLED,  OUTPUT);//3
-  #elif defined(ARDUINO_M5StickC_ESP32)
-    //pinMode(connLED, OUTPUT);//1
-    //digitalWrite(connLED, HIGH);
-    InitStatusLED();
-  #endif
+    #if defined(ARDUINO_ESP8266_MODULE) || defined(ARDUINO_ESP32_MODULE)
+      pinMode(connLED, OUTPUT);//1
+      pinMode(postLED, OUTPUT);//2
+      pinMode(getLED,  OUTPUT);//3
+    #endif
   #endif //useMJLED
+
+  #if defined(ARDUINO_ESP32_MODULE) || defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+    pinMode(ijLED, INPUT);//36
+    pinMode(espLED, OUTPUT);//35
+    digitalWrite(espLED, LED_OFF);
+  #endif
 
   #if defined(CARDKB_ADDR) || defined(JOY_ADDR)
   pinMode(5, INPUT);
@@ -761,7 +786,7 @@ void getKeyData(int kb_add) {
         case 0xB5: c=30; break;//up
         case 0xB6: c=31; break;//down
       }
-      Serial.println(c,HEX);
+      //Serial.println(c,HEX);
       #ifdef useKbd
       if(kbdMode) {
         sendKeyCode(c);
@@ -931,6 +956,11 @@ void loop() {
   }
   #endif //FACES_ADDR
 
+  // LEDのピンを読み取ってM5StickCのLEDを点灯
+  #if defined(ARDUINO_M5StickC_ESP32) ||defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_ESP32_MODULE)
+    digitalWrite(espLED, (digitalRead(ijLED)==LED_ON));
+  #endif
+  
   // Wait a bit before scanning again
   delay(1);
 }
@@ -1154,7 +1184,12 @@ void doMixJuice() {
   #endif //ARDUINO_M5StickC_ESP32
   } else if(cs.startsWith("MJ GETRTC")) {
     /*** RTCデータを取得 ***/ getRTC(inStr.substring(7).toInt());
-    
+
+  #ifndef ARDUINO_ESP8266_MODULE
+  } else if(cs.startsWith("MJ PSUB")) {
+    /*** 出力先 ***/ printToSub=(inStr.substring(8).toInt()==1);
+  #endif
+  
   #ifdef supportUDP
   } else if(cs.startsWith("MJ UDP START")) {
     /*** UDP Start ***/ MJ_UDP_Start(inStr.substring(13));
@@ -2735,13 +2770,13 @@ void MJ_UDP_ReadPacket() {
     //mjSer.print("'");
     for (int i=0; i<rlen; i++){
       #ifdef useKbd
-      if(kbdMode) {
-        sendKeyCode(packetBuffer[i]);
-      } else {
-        mjSer.print(packetBuffer[i]);
-      }
+        if(kbdMode) {
+          sendKeyCode(packetBuffer[i]);
+        } else {
+          mjSer.print(packetBuffer[i]);
+        }
       #else
-      mjSer.print(packetBuffer[i]);
+        mjSer.print(packetBuffer[i]);
       #endif
       delay(1);
     }

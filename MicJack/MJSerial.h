@@ -2,7 +2,8 @@
 #define __MJSERIAL_H__
 
 #include "MJBoard.h"
-#include <WebServer.h>
+
+extern bool printToSub;
 
 #ifdef ARDUINO_ESP32_MODULE
   #define mjMain  Serial2 //Default RX=GPIO16, TX=GPIO17
@@ -38,52 +39,72 @@ void tft_terminal_setup(bool chg);
 void tft_terminal_print(const char *s, int n);
 #endif //defined(ARDUINO_M5Stack_Core_ESP32)
 
+enum {
+  k2M,
+  k2B,
+  k2S
+};
+
 class MJSerial {
   public:
   MJSerial() {
-    mjMain.begin(115200);
-    while (!mjMain) { ; }
-    #if defined(ARDUINO_ESP32_MODULE) || defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32) //ARDUINO_ARCH_ESP32
-    mjSub.begin(115200);
-    while (!mjSub) { ; }
+  
+    #if defined(ARDUINO_ESP32_MODULE) || defined(ARDUINO_M5Stack_Core_ESP32) //ARDUINO_ARCH_ESP32
+      mjMain.begin(115200); while (!mjMain) { ; }
+      mjSub.begin(115200); while (!mjSub) { ; }
+    #elif defined(ARDUINO_M5StickC_ESP32)
+      //mjMain.begin(115200, SERIAL_8N1, 0, 26); // EXT_IO
+      //while (!mjMain) { ; }
+      //mjSub.begin(115200);
+      //while (!mjSub) { ; }
+    #endif
+
+    #ifdef ARDUINO_ESP8266_MODULE
+      mjMain.begin(115200); while (!mjMain) { ; }
     #endif
   }
-  void print(String s) {
-    mjMain.print(s);
+  void print(String s, int type=k2B) {
+    if(type<k2S) mjMain.print(s);
+    if(type>k2M&&printToSub) mjSub.print(s);
     #ifdef ARDUINO_M5Stack_Core_ESP32
     tft_terminal_print(s.c_str(),s.length());
     #endif
   }
-  void println(String s) {
-    mjMain.println(s);
+  void println(String s, int type=k2B) {
+    if(type<k2S) mjMain.println(s);
+    if(type>k2M&&printToSub) mjSub.println(s);
     #ifdef ARDUINO_M5Stack_Core_ESP32
     s=s+String("\n");
     tft_terminal_print(s.c_str(),s.length());
     #endif
   }
-  void print(char* s) {
-    mjMain.print(s);
+  void print(char* s, int type=k2B) {
+    if(type<k2S) mjMain.print(s);
+    if(type>k2M&&printToSub) mjSub.print(s);
     #ifdef ARDUINO_M5Stack_Core_ESP32
     tft_terminal_print(s,strlen(s));
     #endif
   }
-  void println(char* s) {
-    mjMain.println(s);
+  void println(char* s, int type=k2B) {
+    if(type<k2S) mjMain.println(s);
+    if(type>k2M&&printToSub) mjSub.println(s);
     #ifdef ARDUINO_M5Stack_Core_ESP32
     char c[128];for(int i=0;i<128;i++) c[i]=0;
     int n=sprintf(c,"%s\n",s);
     tft_terminal_print(c,n);
     #endif
   }
-  void print(char s) {
-    mjMain.print(s);
+  void print(char s, int type=k2B) {
+    if(type<k2S) mjMain.print(s);
+    if(type>k2M&&printToSub) mjSub.print(s);
     #ifdef ARDUINO_M5Stack_Core_ESP32
     String t=String(s);
     tft_terminal_print(t.c_str(),t.length());
-    #endif
+    #endif 
   }
-  void println(char s) {
-    mjMain.println(s);
+  void println(char s, int type=k2B) {
+    if(type<k2S) mjMain.println(s);
+    if(type>k2M&&printToSub) mjSub.println(s);
     #ifdef ARDUINO_M5Stack_Core_ESP32
     String t=String(s)+String("\n");
     tft_terminal_print(t.c_str(),t.length());//mjLcd.println(s);
@@ -92,14 +113,16 @@ class MJSerial {
   void printfileinfo(const char * format, const char * filename, const char * filesize) {
     //void printf(const char * format, ...) {
     mjMain.printf(format, filename, filesize);
+    if(printToSub) mjSub.printf(format, filename, filesize);
     #ifdef ARDUINO_M5Stack_Core_ESP32
     char c[128];for(int i=0;i<128;i++) c[i]=0;
     int n=sprintf(c, format, filename, filesize);
     tft_terminal_print(c,n);
     #endif
   }
-  void println(IPAddress s) {
-    mjMain.println(s);
+  void println(IPAddress s, int type=k2B) {
+    if(type<k2S) mjMain.println(s);
+    if(type>k2M&&printToSub) mjSub.println(s);
     #ifdef ARDUINO_M5Stack_Core_ESP32
     char c[128];for(int i=0;i<128;i++) c[i]=0;
     int n=sprintf(c, "%d.%d.%d.%d\n",s[0],s[1],s[2],s[3]);
@@ -111,8 +134,10 @@ class MJSerial {
   //size_t HardwareSerial::println(val);
   //size_t HardwareSerial::println(val, format);
 
-  void write(uint8_t s) {
-    mjMain.write(s);
+  void write(uint8_t s, int type=k2B) {
+    if(type<k2S) mjMain.write(s);
+    if(type>k2M&&printToSub) mjSub.write(s);
+    //mjMain.write(s);
   }
   //size_t HardwareSerial::write(uint8_t c);
   //size_t HardwareSerial::write(const char *str);
