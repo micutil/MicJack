@@ -6,7 +6,8 @@ WebServer
  *  CC BY Michio Ono. http://ijutilities.micutil.com
  *  
  *  *Version Information
- *  2020/ 5/ 5  ver 1.2.2b1 LED信号読取り、M5StickCのキーボードモード対応
+ *  2020/ 5/ 4  ver 1.2.2b2 シリアル送信の不具合を修正
+ *  2020/ 5/ 4  ver 1.2.2b1 LED信号読取り、M5StickCのキーボードモード対応
  *  2020/ 4/29  ver 1.2.1b1 Fixed UDP, CardKB for M5Stack/M5StickC
  *  2020/ 4/19  ver 1.2.0b1 ESP32 Module, M5Stack, M5StickC version
  *  2020/ 3/22  ver 1.1.0b2 UDP, TJ, FP (200307:1.1.0b1)
@@ -114,7 +115,7 @@ const String ntpServer = "ntp.jst.mfeed.ad.jp";
 MJSerial mjSer;
 //#endif
 
-const String MicJackVer="MicJack-1.2.2b1";
+const String MicJackVer="MicJack-1.2.2b2";
 const String TelloJackVer="TelloJack-1.0.0b1";
 const String MJVer="MixJuice-1.3.0";
 const int sleepTimeSec = 60;
@@ -861,11 +862,13 @@ void loop() {
     #endif
   #endif  
 
-  /*
   while (mjMain.available()) {
     if(postmode&&posttype==HTML_POST_QUEST) {
       //Quest用ポストデータ
       uint8_t q=(uint8_t)mjMain.read();
+      #ifndef ARDUINO_ESP8266_MODULE
+        mjSub.write(q);
+      #endif
       int p=(postdata.length()%16);
       if(questEnd) {
         //データ終了後は0xFF000000000000にする
@@ -880,6 +883,9 @@ void loop() {
       inStr="";//いちおう消しておく
     } else {
       char inChar = (char)mjMain.read();
+      #ifndef ARDUINO_ESP8266_MODULE
+        mjSub.write(inChar);
+      #endif
       //Check end of line 
       if(inChar=='\n' || inChar=='\r') {
         stringComplete = true;
@@ -893,8 +899,8 @@ void loop() {
     }
     delay(1);
   }
-  */
 
+  /*
   for(int i=0;i<mjNum;i++) {
     if(stringComplete==false) {
       while (mjSS[i]->available()) {
@@ -919,9 +925,8 @@ void loop() {
           if(inChar=='\n' || inChar=='\r') {
             stringComplete = true;
             //if(!postmode) ss[i]->flush(); //読み飛ばし "OK"など
-            /* flashは Arduino 1.0から、読み込みを待つコマンドになったため
-             * flashしないで、次の読み込みで、次の処理をすることに
-             */
+            // flashは Arduino 1.0から、読み込みを待つコマンドになったため
+            // flashしないで、次の読み込みで、次の処理をすることに
             break;
           } else {
             inStr += inChar;
@@ -931,10 +936,16 @@ void loop() {
       }
     }
   }
-  
+  */
   if(stringComplete) {  //データあり
     doMixJuice();
   }
+
+  #ifndef ARDUINO_ESP8266_MODULE
+  while (mjSub.available()) {
+    mjMain.write(mjSub.read());
+  }
+  #endif
   
   // Check if a client has connected
   // if(isServer)
