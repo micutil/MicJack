@@ -6,6 +6,8 @@ WebServer
  *  CC BY Michio Ono. http://ijutilities.micutil.com
  *  
  *  *Version Information
+ *  2020/ 6/14  ver 1.2.3d2 M5Atom対応版
+ *  2020/ 5/29  ver 1.2.3d1 M5Atom対応版(動作未確認版）
  *  2020/ 5/ 4  ver 1.2.2b2 シリアル送信の不具合を修正
  *  2020/ 5/ 4  ver 1.2.2b1 LED信号読取り、M5StickCのキーボードモード対応
  *  2020/ 4/29  ver 1.2.1b1 Fixed UDP, CardKB for M5Stack/M5StickC
@@ -26,20 +28,35 @@ WebServer
 
 #include "MJBoard.h"
 
+//========================
+// ESP8266
+//========================
 #ifdef ARDUINO_ESP8266_MODULE //ESP8266
   #include <ESP8266mDNS.h>
   FS qbFS = SPIFFS;
+/*
+  const int ijLED=14;
+  const int espLED=2;
+  #define LED_OFF  LOW
+  #define LED_ON   HIGH
+*/
 #endif
 
+//========================
+// ESP32
+//========================
 #ifdef ARDUINO_ESP32_MODULE
   #define hasDISP
   #include <ESPmDNS.h>
   const int ijLED=15;
   const int espLED=2;
   #define LED_OFF  LOW
-  #define LED_ON HIGH
+  #define LED_ON   HIGH
 #endif
 
+//========================
+// M5Stack
+//========================
 #ifdef ARDUINO_M5Stack_Core_ESP32
   #define useSD
   #define hasDISP
@@ -50,13 +67,15 @@ WebServer
   const int ijLED=5;
   const int espLED=2;
   #define LED_OFF  LOW
-  #define LED_ON HIGH
-
+  #define LED_ON   HIGH
 #endif
 
 #include "time.h"
 const String ntpServer = "ntp.jst.mfeed.ad.jp";
 
+//========================
+// M5Stick C
+//========================
 #ifdef ARDUINO_M5StickC_ESP32
   #define hasDISP
   #include <M5StickC.h>
@@ -74,6 +93,28 @@ const String ntpServer = "ntp.jst.mfeed.ad.jp";
   #define LED_ON  LOW
 #endif
 
+//========================
+// M5Atom
+//========================
+#ifdef ARDUINO_M5Atom_ESP32
+  #include <M5Atom.h>
+  #define isLite
+  //#define isMatrix
+  //#define isEcho
+  #include <ESPmDNS.h>
+  const int ijLED=33;
+  const int ijBTN=23;
+  bool ijBTNPush;
+  #define LED_OFF  LOW
+  #define LED_ON   HIGH 
+  //RGB Led G27
+  //Btn     G39
+  //IR      G12
+#endif
+
+//++++++++++++++++++
+// FACES
+//++++++++++++++++++
 #if defined(ARDUINO_M5Stack_Core_ESP32)
 #define FACES_ADDR     0X08
 #ifdef FACES_ADDR
@@ -82,7 +123,10 @@ const String ntpServer = "ntp.jst.mfeed.ad.jp";
 #endif //FACES_ADDR
 #endif //ARDUINO_M5Stack_Core_ESP32
 
-#if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+//++++++++++++++++++
+// Joy Stick
+//++++++++++++++++++
+#if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32) || defined(ARDUINO_M5Atom_ESP32)
 #define CARDKB_ADDR 0x5F //Card Keyboard Unit
 //Joy Stick Unit
 //#define JOY_ADDR 0x52
@@ -92,7 +136,6 @@ const String ntpServer = "ntp.jst.mfeed.ad.jp";
   uint8_t button_data, pbutton_data;
   char data[100];
 #endif //JOY_ADDR
-
 #endif
 
 //#include <WebServer.h>
@@ -115,7 +158,7 @@ const String ntpServer = "ntp.jst.mfeed.ad.jp";
 MJSerial mjSer;
 //#endif
 
-const String MicJackVer="MicJack-1.2.2b2";
+const String MicJackVer="MicJack-1.2.3b2";
 const String TelloJackVer="TelloJack-1.0.0b1";
 const String MJVer="MixJuice-1.3.0";
 const int sleepTimeSec = 60;
@@ -125,6 +168,10 @@ String inStr = ""; // a string to hold incoming data
 boolean stringComplete = false;  // whether the string is complete
 
 IPAddress staIP; // the IP address of your shield
+
+//==================
+// EEPROM (最大4K)
+//==================
 
 typedef struct sspw {
   char ssid[32];
@@ -184,7 +231,11 @@ int spn=kspn;
 
 /*** Web Server ***/
 #define initStartSERVER
-WebServer server(80);//ESP8266WebServer server(80);
+#ifdef ARDUINO_ESP8266_MODULE
+  ESP8266WebServer server(80);
+#else
+  WebServer server(80);//ESP8266WebServer server(80);
+#endif
 boolean isServer=false;
 String rootPage;
 const char* mjname = "micjack";
@@ -239,16 +290,19 @@ bool kbdMode=false;
 #include <ps2dev.h>
 
 #if defined(ARDUINO_ESP32_MODULE) || defined(ARDUINO_M5Stack_Core_ESP32)
-  #define KB_CLK      21 // 0   // A4  // PS/2 CLK  IchigoJamのKBD1に接続 //21//
-  #define KB_DATA     22 // 15  // A5  // PS/2 DATA IchigoJamのKBD2に接続 //22//
+  #define KB_CLK      21 // A4  // PS/2 CLK  IchigoJamのKBD1に接続 //21//
+  #define KB_DATA     22 // A5  // PS/2 DATA IchigoJamのKBD2に接続 //22//
 #elif defined(ARDUINO_M5StickC_ESP32)
   //Grove端子 SDA:IO32, SCL:IO33
   //Wire.begin(32, 33);
-  #define KB_CLK      33 // 0   // A4  // PS/2 CLK  IchigoJamのKBD1に接続 //21//
-  #define KB_DATA     32 // 15  // A5  // PS/2 DATA IchigoJamのKBD2に接続 //22//
+  #define KB_CLK      33 // A4  // PS/2 CLK  IchigoJamのKBD1に接続 //21//
+  #define KB_DATA     32 // A5  // PS/2 DATA IchigoJamのKBD2に接続 //22//
+#elif defined(ARDUINO_M5Atom_ESP32)
+  #define KB_CLK      21 // A4  // PS/2 CLK  IchigoJamのKBD1に接続 //21//
+  #define KB_DATA     25 // A5  // PS/2 DATA IchigoJamのKBD2に接続 //22//
 #elif defined(ARDUINO_ESP8266_MODULE)
-  #define KB_CLK      13 // 0   // A4  // PS/2 CLK  IchigoJamのKBD1に接続 //21//
-  #define KB_DATA     16 // 15  // A5  // PS/2 DATA IchigoJamのKBD2に接続 //22//
+  #define KB_CLK      13 // A4  // PS/2 CLK  IchigoJamのKBD1に接続 //21//
+  #define KB_DATA     16 // A5  // PS/2 DATA IchigoJamのKBD2に接続 //22//
 #endif //ARDUINO_ARCH_ESP32
 
 uint8_t enabled =0;               // PS/2 ホスト送信可能状態
@@ -522,14 +576,109 @@ void getRTC(int n) {
 
 #endif /ARDUINO_M5StickC_ESP32
 
+//##################################
+// M5Atom LED
+//#################################
+
+#ifdef ARDUINO_M5Atom_ESP32
+bool connCol=false;
+bool getCol=false;
+bool postCol=false;
+bool ijLEDStatus=false;
+int32_t atmLedCol=0;
+float gyrX = 0, gyrY = 0, gyrZ = 0;
+float accX = 0, accY = 0, accZ = 0;
+float temp = 0;
+bool IMU6886Flag = false;
+
+void netAccLedLoop(void *args) {
+  int nax=0,nay=1;
+  for(;;)
+  {
+    if(getCol||postCol) {
+      SetAtomLedColor(0,0,1,1,atmLedCol);
+      SetAtomLedColor(nax,nay,1,1,atmLedCol);
+      delay(100);
+      SetAtomLedColor(0,0,1,1,0);
+      SetAtomLedColor(nax,nay,1,1,0);
+      if(nay==1&&nax<=4) {
+        nax+=1;if(nax==5) {nax=4;nay=2;}
+      } else if(nax==4&&nay<=4) {
+        nay+=1;if(nay==5) {nax=3;nay=4;}
+      } else if(nay==4&&nax>=1) {
+        nax-=1;if(nax==-1) {nax=0;nay=3;}
+      } else if(nax==0&&nay>=1) {
+        nay-=1;if(nay==-1) {nax=1;nay=1;}
+      }
+    } else {
+      delay(100);
+    }
+  }
+}
+
+void SetAtomLedColor(int xp, int yp, int xs, int ys, int32_t c) {
+  for(int y=yp; y<5; y++) {
+    for(int x=xp; x<5; x++) {
+      M5.dis.drawpix(x+y*5, c);
+      if(x>=xp+xs-1) x=5;
+    }
+    if(y>=yp+ys-1) y=5;
+  }  
+}
+
+void MakeAtomColorValue() {
+  int32_t gn = (connCol==true)?255:0; gn=(gn<<16);
+  int32_t rn = (postCol==true)?255:0; rn=(rn<<8);
+  int32_t bn = (getCol==true)?255:0;  //bn;
+  atmLedCol=gn+rn+bn;
+
+  const int32_t bkc=0x20;
+  SetAtomLedColor(2,0,1,1,max(gn,bkc<<16));//Connect
+  SetAtomLedColor(4,0,1,1,max(rn,bkc<<8));//Push
+  SetAtomLedColor(3,0,1,1,max(bn,bkc));//Get
+  rn=0;if(ijLEDStatus) rn=(0xFF<<8);
+  SetAtomLedColor(1,1,3,3,rn);//IchigoJam LED
+
+  if(ijLEDStatus) {
+    SetAtomLedColor(0,0,1,1,rn);
+  } else {
+    SetAtomLedColor(0,0,1,1,atmLedCol);
+  }
+}
+void atomConnLED(bool onoff) {
+  connCol=onoff;
+  MakeAtomColorValue();
+}
+void atomGetLED(bool onoff) {
+  getCol=onoff;
+  MakeAtomColorValue();
+}
+void atomPostLED(bool onoff) {
+  postCol=onoff;
+  MakeAtomColorValue();
+}
+
+void IchigoJamAtomLED() {
+  MakeAtomColorValue();
+}
+#endif //ARDUINO_M5Atom_ESP32
+
 /************************************
+/************************************
+/************************************
+ * 
  * Initial Set up
  * 
  ************************************/
+ 
 void setup() {
   
   #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
     M5.begin();
+  #elif defined(ARDUINO_M5Atom_ESP32)
+    //begin(bool SerialEnable , bool I2CEnable , bool DisplayEnable ) 
+    M5.begin(true,true,true);
+    //M5.begin(true,true,true);
   #endif
 
   #ifdef ARDUINO_M5StickC_ESP32
@@ -538,6 +687,14 @@ void setup() {
     while (!mjSub) { ; }
     Serial2.begin(115200, SERIAL_8N1, 0, 26); // EXT_IO
     while (!mjMain) { ; }
+  #endif
+  
+  #ifdef ARDUINO_M5Atom_ESP32
+    Serial.begin(115200);
+    while (!mjSub) { ; }
+    Serial2.begin(115200, SERIAL_8N1, 19, 22); // EXT_IO
+    while (!mjMain) { ; }
+    //MakeAtomColorValue();
   #endif
 
   #ifdef ARDUINO_ESP8266_MODULE
@@ -566,13 +723,13 @@ void setup() {
     while (!SD.begin()) { mjSer.println("."); }//mjSer.println("SD IO failed..."); }
   #endif //useSD
 
-  #if defined(ARDUINO_M5Stack_Core_ESP32)// || defined(ARDUINO_M5StickC_ESP32)
+  #if defined(ARDUINO_M5Stack_Core_ESP32) // || defined(ARDUINO_M5StickC_ESP32)
     tft_terminal_setup(false);
   #endif
   
   delay(2000);
   mjSer.println("");
-  mjSer.println("NEW");delay(100);
+  //mjSer.println("NEW");delay(100);
   mjSer.println("CLS");delay(100);
   mjSer.println("");
 
@@ -584,12 +741,19 @@ void setup() {
     #endif
   #endif //useMJLED
 
-  #if defined(ARDUINO_ESP32_MODULE) || defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
-    pinMode(ijLED, INPUT);//36
-    pinMode(espLED, OUTPUT);//35
-    digitalWrite(espLED, LED_OFF);
+  #ifndef ARDUINO_ESP8266_MODULE
+    pinMode(ijLED, INPUT);  //ESP32=15, M5Stack=5, M5StickC=36, Atom=33
+    #ifdef ARDUINO_M5Atom_ESP32
+      pinMode(ijBTN, OUTPUT_OPEN_DRAIN);//Atom=23
+      //ボタンを押した時、1 or 0 ?
+      ijBTNPush=!(digitalRead(ijBTN)==LOW);
+      digitalWrite(ijBTN, !ijBTNPush);
+    #else
+      pinMode(espLED, OUTPUT);//ESP32=2,  M5Stack=2, M5StickC=10
+      digitalWrite(espLED, LED_OFF);
+    #endif
   #endif
-
+  
   #if defined(CARDKB_ADDR) || defined(JOY_ADDR)
   pinMode(5, INPUT);
   digitalWrite(5, HIGH);
@@ -686,6 +850,25 @@ void setup() {
   apcbuf.kbd=false;
   
 #endif
+
+  #ifdef ARDUINO_M5Atom_ESP32
+  if (M5.IMU.Init() != 0) {
+      IMU6886Flag = false;
+      mjSer.println("'IMU6886 failure...");
+  } else {
+      IMU6886Flag = true;
+      mjSer.println("'IMU6886 enabled...");
+  }
+
+  xTaskCreatePinnedToCore(
+                    netAccLedLoop,     /* Function to implement the task */
+                    "netAccLedLoop",   /* Name of the task */
+                    4096,      /* Stack size in words */
+                    NULL,      /* Task input parameter */
+                    1,         /* Priority of the task */
+                    NULL,      /* Task handle. */
+                    1);        /* Core where the task should run */
+  #endif
 
   //Serial.println(UDP_PACKET_SIZE,DEC);
   mjSer.println("'Ready to go!");
@@ -803,11 +986,17 @@ void getKeyData(int kb_add) {
 #endif
 
 /************************************
+/************************************
+/************************************
+ * 
  * Event loop
  * 
  ************************************/
 
 #if defined(ARDUINO_ESP32_MODULE) || defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+  const int mjNum=2;
+  HardwareSerial *mjSS[]={&mjMain,&mjSub};
+#elif defined(ARDUINO_M5Atom_ESP32)
   const int mjNum=2;
   HardwareSerial *mjSS[]={&mjMain,&mjSub};
 #elif defined(ARDUINO_ESP8266_MODULE)
@@ -817,9 +1006,11 @@ void getKeyData(int kb_add) {
 
 void loop() {
 
-  #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+  #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32) || defined(ARDUINO_M5Atom_ESP32)
   M5.update();
+  #endif
   
+  #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
   if(M5.BtnA.wasPressed()) {
     drawAPQRCode();
   }
@@ -840,9 +1031,19 @@ void loop() {
     M5.powerOFF();
   }
   #endif
+  
   #ifdef ARDUINO_M5StickC_ESP32
-  if(M5.Axp.GetBtnPress()==2) esp_restart();
+    if(M5.Axp.GetBtnPress()==2) esp_restart();
   #endif //ARDUINO_M5StickC_ESP32
+
+  #ifdef ARDUINO_M5Atom_ESP32
+    //digitalWrite(ijBTN, (ijBTNPush==M5.Btn.isPressed()));//!M5.Btn.isPressed());   
+    if(M5.Btn.wasPressed()) {
+      digitalWrite(ijBTN, (ijBTNPush==HIGH));
+    } else if(M5.Btn.wasReleased()) {
+      digitalWrite(ijBTN, (ijBTNPush==LOW));
+    }
+  #endif
 
   #ifdef supportOTA
     ArduinoOTA.handle();
@@ -861,7 +1062,7 @@ void loop() {
     }
     #endif
   #endif  
-
+  
   while (mjMain.available()) {
     if(postmode&&posttype==HTML_POST_QUEST) {
       //Quest用ポストデータ
@@ -966,10 +1167,15 @@ void loop() {
     getKeyData(FACES_ADDR);
   }
   #endif //FACES_ADDR
-
+  
   // LEDのピンを読み取ってM5StickCのLEDを点灯
-  #if defined(ARDUINO_M5StickC_ESP32) ||defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_ESP32_MODULE)
-    digitalWrite(espLED, (digitalRead(ijLED)==LED_ON));
+  #ifndef ARDUINO_ESP8266_MODULE
+    #ifdef ARDUINO_M5Atom_ESP32
+      ijLEDStatus=(digitalRead(ijLED)==LED_ON);
+      IchigoJamAtomLED();
+    #else
+      digitalWrite(espLED, (digitalRead(ijLED)==LED_ON));
+    #endif
   #endif
   
   // Wait a bit before scanning again
@@ -1165,9 +1371,9 @@ void doMixJuice() {
   } else if(cs.startsWith("MJ AREAD") || cs.startsWith("MJ ANA")) {
     /*** digitalRead ***/
     /* analog input 0 - 1V */
-    #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+    #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32) || defined(ARDUINO_M5Atom_ESP32)
     #else
-    mjSer.println(analogRead(A0));
+      mjSer.println(analogRead(A0));
     #endif
 
   } else if(cs.startsWith("MJ KBDCMD ON") || cs.startsWith("MJ KBDCMD 1")) {
@@ -1194,7 +1400,7 @@ void doMixJuice() {
     
   #endif //ARDUINO_M5StickC_ESP32
   } else if(cs.startsWith("MJ GETRTC")) {
-    /*** RTCデータを取得 ***/ getRTC(inStr.substring(7).toInt());
+    /*** RTCデータを取得 ***/ getRTC(inStr.substring(9).toInt());
 
   #ifndef ARDUINO_ESP8266_MODULE
   } else if(cs.startsWith("MJ PSUB")) {
@@ -1257,6 +1463,46 @@ void doMixJuice() {
 
   #endif //supportTELLO 
   #endif //supportUDP
+
+  #ifdef ARDUINO_M5Atom_ESP32
+  } else if(IMU6886Flag) {
+    if(cs.startsWith("MJ GYRO")) {
+      M5.IMU.getGyroData(&gyrX, &gyrY, &gyrZ);
+      int x=(int)(gyrX*10.0+100);x=min(200,max(0,(int)x));
+      int y=(int)(gyrY*10.0+100);y=min(200,max(0,(int)y));
+      int z=(int)(gyrZ*10.0+100);z=min(200,max(0,(int)z));
+      uint8_t d[]={(uint8_t)x,(uint8_t)y,(uint8_t)z};
+      for(int i;i<3;i++) {
+        mjSer.print(d[i]); mjSer.flush();
+        /*
+        Serial2.print(d[i],DEC); Serial2.flush();
+        if(printToSub) {Serial.print(d[i],DEC); Serial.flush();}
+        */
+      }
+     /*
+      Serial2.write((uint8_t*)d,3); Serial2.flush();
+      Serial.write((uint8_t*)d,3); Serial.flush();
+      */
+     } else if(cs.startsWith("MJ ACC")) {
+      M5.IMU.getAccelData(&accX, &accY, &accZ);
+      int x=(int)(accX*50.0+100);x=min(200,max(0,(int)x));
+      int y=(int)(accY*50.0+100);y=min(200,max(0,(int)y));
+      int z=(int)(accZ*50.0+100);z=min(200,max(0,(int)z));
+      uint8_t d[]={(uint8_t)x,(uint8_t)y,(uint8_t)z};
+      for(int i;i<3;i++) {
+        mjSer.print(d[i]); mjSer.flush();
+      }
+      /*
+      Serial2.write((uint8_t*)d,3); Serial2.flush();
+      Serial.write((uint8_t*)d,3); Serial.flush();
+      */
+    } else if(cs.startsWith("MJ TEMP")) {
+      M5.IMU.getTempData(&temp);
+      int8_t d=(int8_t)temp;
+      mjSer.write(d); mjSer.flush();
+    }
+    
+  #endif
   
   } else if(cs.startsWith("MJ ")||cs.startsWith("TJ ")||cs.startsWith("FP ")) {
     /*** NG ***/ mjSer.println("'NG: "+MJVer);
@@ -1345,6 +1591,8 @@ void MJ_APC_SSID_PSSS(String tss, String tps) {
         digitalWrite(connLED, HIGH);
       #elif defined(ARDUINO_M5StickC_ESP32)
         //digitalWrite(connLED, LOW);
+      #elif defined(ARDUINO_M5Atom_ESP32)
+        atomConnLED(true);
       #endif
       #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
         ConnectStatusLED(true,IPAddressToStr(staIP));
@@ -1639,9 +1887,11 @@ void MJ_APD() {
   mjSer.println("'OK");
   #ifdef useMJLED
     #if defined(ARDUINO_ESP8266_MODULE) || defined(ARDUINO_ESP32_MODULE)
-        digitalWrite(connLED, HIGH);
+        digitalWrite(connLED, LOW);
       #elif defined(ARDUINO_M5StickC_ESP32)
         //digitalWrite(connLED, LOW);
+      #elif defined(ARDUINO_M5Atom_ESP32)
+        atomConnLED(false);
     #endif
     #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
       ConnectStatusLED(false);
@@ -1811,6 +2061,8 @@ void MJ_HTML(int type, String addr) {
         #endif
         #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
           GetStatusLED(true,addr);
+        #elif defined(ARDUINO_M5Atom_ESP32)
+          atomGetLED(true);
         #endif
       #endif
       client.print(String("GET ") + url + " HTTP/1.0\r\n" + 
@@ -1830,6 +2082,8 @@ void MJ_HTML(int type, String addr) {
         #endif
         #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
           PostStatusLED(true,addr);
+        #elif defined(ARDUINO_M5Atom_ESP32)
+          atomPostLED(true);
         #endif
       #endif
 
@@ -1959,6 +2213,8 @@ void MJ_HTML(int type, String addr) {
         #endif
         #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
           GetStatusLED(false);
+        #elif defined(ARDUINO_M5Atom_ESP32)
+          atomGetLED(false);
         #endif
       #endif
       break;
@@ -1973,6 +2229,8 @@ void MJ_HTML(int type, String addr) {
         #endif
         #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
           PostStatusLED(false);
+        #elif defined(ARDUINO_M5Atom_ESP32)
+          atomPostLED(false);
         #endif
       #endif
       break;
@@ -2050,9 +2308,11 @@ void MJ_HTMLS(int type, String addr) {
         #endif
         #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
           GetStatusLED(true,addr);
+        #elif defined(ARDUINO_M5Atom_ESP32)
+          atomGetLED(true);
         #endif
       #endif
-      client.print(String("GET ") + url + " HTTP/1.0\r\n" + 
+      client.print(String("GET ") + url + " HTTP/1.1\r\n" + 
                    "Host: " + host + "\r\n" + 
                    "User-Agent: " + MJVer + " " + MicJackVer + "\r\n" + 
                    //"Connection: close\r\n" + 
@@ -2068,11 +2328,13 @@ void MJ_HTMLS(int type, String addr) {
         #endif
         #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
           PostStatusLED(true,addr);
+        #elif defined(ARDUINO_M5Atom_ESP32)
+          atomPostLED(true);
         #endif
       #endif
       prm=postdata;//postdata.replace("\n","\r\n");//改行を置き換え
 
-      client.print(String("POST ") + url + " HTTP/1.0\r\n" + 
+      client.print(String("POST ") + url + " HTTP/1.1\r\n" + 
                   "Accept: */*\r\n" + 
                   "Host: " + host + "\r\n" + 
                   "User-Agent: " + MJVer + " " + MicJackVer + "\r\n" + 
@@ -2147,6 +2409,8 @@ void MJ_HTMLS(int type, String addr) {
         #endif
         #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
           GetStatusLED(false);
+        #elif defined(ARDUINO_M5Atom_ESP32)
+          atomGetLED(false);
         #endif
       #endif
       break;
@@ -2160,6 +2424,8 @@ void MJ_HTMLS(int type, String addr) {
         #endif
         #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
           PostStatusLED(false);
+        #elif defined(ARDUINO_M5Atom_ESP32)
+          atomPostLED(false);
         #endif
       #endif
       break;
@@ -2195,6 +2461,8 @@ void MJ_POST_START(int type, String addr) {
       #endif
       #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
         PostStatusLED(true,addr);
+      #elif defined(ARDUINO_M5Atom_ESP32)
+        atomPostLED(true);
       #endif
     #endif
     

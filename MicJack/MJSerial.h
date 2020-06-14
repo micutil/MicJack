@@ -21,8 +21,15 @@ extern bool printToSub;
   #define mjSub  Serial  //Default RX=GPIO3,  TX=GPIO1
   #define mjLcd  M5.Lcd
 
+#elif defined(ARDUINO_M5Atom_ESP32)
+  #include <M5Atom.h>
+  #define mjMain  Serial2 //Default RX=GPIO19, TX=GPIO23
+  #define mjSub  Serial  //Default RX=GPIO3,  TX=GPIO1
+  #define mjLcd  M5.Lcd
+
 #elif defined(ARDUINO_ESP8266_MODULE) //ESP8266
   #define mjMain  Serial //Default RX=GPIO3, TX=GPIO1
+  #define mjSub  Serial //Default RX=GPIO3, TX=GPIO1
   
 #endif
 
@@ -57,6 +64,8 @@ class MJSerial {
       //while (!mjMain) { ; }
       //mjSub.begin(115200);
       //while (!mjSub) { ; }
+    #elif defined(ARDUINO_M5Atom_ESP32)
+    
     #endif
 
     #ifdef ARDUINO_ESP8266_MODULE
@@ -65,14 +74,14 @@ class MJSerial {
   }
   void print(String s) {//, int type=k2B) {
     mjMain.print(s);//if(type<k2S) mjMain.print(s);
-    //if(printToSub) mjSub.print(s);//if(type>k2M&&printToSub) mjSub.print(s);
+    if(printToSub) mjSub.print(s);//if(type>k2M&&printToSub) mjSub.print(s);
     #ifdef ARDUINO_M5Stack_Core_ESP32
     tft_terminal_print(s.c_str(),s.length());
     #endif
   }
   void println(String s) {//, int type=k2B) {
     mjMain.println(s);//if(type<k2S) mjMain.println(s);
-    //if(printToSub) mjSub.println(s);//if(type>k2M&&printToSub) mjSub.println(s);
+    if(printToSub) mjSub.println(s);//if(type>k2M&&printToSub) mjSub.println(s);
     #ifdef ARDUINO_M5Stack_Core_ESP32
     s=s+String("\n");
     tft_terminal_print(s.c_str(),s.length());
@@ -80,14 +89,14 @@ class MJSerial {
   }
   void print(char* s) {//, int type=k2B) {
     mjMain.print(s);//if(type<k2S) mjMain.print(s);
-    //if(printToSub) mjSub.print(s);//if(type>k2M&&printToSub) mjSub.print(s);
+    if(printToSub) mjSub.print(s);//if(type>k2M&&printToSub) mjSub.print(s);
     #ifdef ARDUINO_M5Stack_Core_ESP32
     tft_terminal_print(s,strlen(s));
     #endif
   }
   void println(char* s) {//, int type=k2B) {
     mjMain.println(s);//if(type<k2S) mjMain.println(s);
-    //if(printToSub) mjSub.println(s);//if(type>k2M&&printToSub) mjSub.println(s);
+    if(printToSub) mjSub.println(s);//if(type>k2M&&printToSub) mjSub.println(s);
     #ifdef ARDUINO_M5Stack_Core_ESP32
     char c[128];for(int i=0;i<128;i++) c[i]=0;
     int n=sprintf(c,"%s\n",s);
@@ -96,7 +105,7 @@ class MJSerial {
   }
   void print(char s) {//, int type=k2B) {
     mjMain.print(s);//if(type<k2S) mjMain.print(s);
-    //if(printToSub) mjSub.print(s);//if(type>k2M&&printToSub) mjSub.print(s);
+    if(printToSub) mjSub.print(s);//if(type>k2M&&printToSub) mjSub.print(s);
     #ifdef ARDUINO_M5Stack_Core_ESP32
     String t=String(s);
     tft_terminal_print(t.c_str(),t.length());
@@ -104,7 +113,7 @@ class MJSerial {
   }
   void println(char s) {//, int type=k2B) {
     mjMain.println(s);//if(type<k2S) mjMain.println(s);
-    //if(printToSub) mjSub.println(s);//if(type>k2M&&printToSub) mjSub.println(s);
+    if(printToSub) mjSub.println(s);//if(type>k2M&&printToSub) mjSub.println(s);
     #ifdef ARDUINO_M5Stack_Core_ESP32
     String t=String(s)+String("\n");
     tft_terminal_print(t.c_str(),t.length());//mjLcd.println(s);
@@ -113,7 +122,7 @@ class MJSerial {
   void printfileinfo(const char * format, const char * filename, const char * filesize) {
     //void printf(const char * format, ...) {
     mjMain.printf(format, filename, filesize);
-    //if(printToSub) mjSub.printf(format, filename, filesize);
+    if(printToSub) mjSub.printf(format, filename, filesize);
     #ifdef ARDUINO_M5Stack_Core_ESP32
     char c[128];for(int i=0;i<128;i++) c[i]=0;
     int n=sprintf(c, format, filename, filesize);
@@ -122,7 +131,7 @@ class MJSerial {
   }
   void println(IPAddress s) {//, int type=k2B) {
     mjMain.println(s);//if(type<k2S) mjMain.println(s);
-    //if(printToSub) mjSub.println(s);//if(type>k2M&&printToSub) mjSub.println(s);
+    if(printToSub) mjSub.println(s);//if(type>k2M&&printToSub) mjSub.println(s);
     #ifdef ARDUINO_M5Stack_Core_ESP32
     char c[128];for(int i=0;i<128;i++) c[i]=0;
     int n=sprintf(c, "%d.%d.%d.%d\n",s[0],s[1],s[2],s[3]);
@@ -136,13 +145,18 @@ class MJSerial {
 
   void write(uint8_t s) {//, int type=k2B) {
     mjMain.write(s);//if(type<k2S) mjMain.write(s);
-    //if(printToSub) mjSub.write(s);//if(type>k2M&&printToSub) mjSub.write(s);
+    if(printToSub) mjSub.write(s);//if(type>k2M&&printToSub) mjSub.write(s);
     //mjMain.write(s);
   }
   //size_t HardwareSerial::write(uint8_t c);
   //size_t HardwareSerial::write(const char *str);
   //size_t HardwareSerial::write(const char *buffer, size_t size);
   //size_t HardwareSerial::write(const uint8_t *buffer, size_t size);
+
+  void flush() {
+    mjMain.flush();
+    if(printToSub) mjSub.flush();
+  }
 };
 
 #endif //__MJSERIAL_H__
