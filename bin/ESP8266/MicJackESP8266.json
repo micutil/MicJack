@@ -1,0 +1,10 @@
+[
+    {
+        "name": "MicJack ESP8266",
+        "version": "v1.2.2",
+        "path": "",
+        "commands": [
+			"--chip esp8266 --port %port --baud %baud --before default_reset --after hard_reset write_flash 0x00000 %PATH\\MicJack.ino.generic.bin 0x100000 %PATH\\MicJack.spiffs.bin"
+        ]
+    }
+]
