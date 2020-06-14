@@ -16,15 +16,15 @@ CC BY Michio Ono (Micono Utilities)
 - Kidspod; に対応したコマンド
 - Kidspod; にIchigonQuestのプログラムの受送信
 - Tello 操作コマンド
-- ESP32系にも対応：ESP32系モジュール版、M5Stack版、M5StickC版 
+- ESP32系にも対応：ESP32系モジュール版、M5Stack版、M5StickC版、M5Atom版 
 - ESP32系でIchigoJamのLED信号の入力に対応
-- M5Stack / M5StickC で、CardKBユニットやFACESを使った文字入力
+- M5Stack / M5StickC / M5Atom で、CardKBユニットやFACESを使った文字入力
 
 **(ESP32系の説明は同梱のManual.pdfの「ESP32版の簡単な説明」に簡単に書いてあります)**
 
 
-<img src="image/ESP32.jpg" height="200">  <img src="image/M5Stack.jpg" height ="200"><br/>
-<img src="image/M5StickC.jpg" height ="100"> **M5StickC**<br/>
+<img src="image/ESP32.jpg" height="200">  <img src="image/M5Stack.jpg" height ="200"> <img src="image/m5atom.jpg" height="200"> **M5Atom**<br/>
+<img src="image/M5StickC.jpg" height ="120"> **M5StickC**<br/>
 <img src="image/Kbd.jpg" height ="300"> **スマホのバーチャルキーボードで入力**<br/>
 <br/>
 
@@ -37,6 +37,14 @@ CC BY Michio Ono (Micono Utilities)
 
 
 **[更新内容]**
+
+v1.2.3b2 (2020/6/14) 
+
+- (新規) M5Atomに対応
+- (更新) ps2devライブラリ更新に伴う更新。
+- (修正) MJ GETRTC (日時を取得)を修正。
+- (変更) MJ PSUB # コマンドを再度対応に変更。
+- (ほか) IJUtilitiesがESP32系のインストールに対応。
 
 v1.2.2b2 (2020/5/4 ESP32系のみの更新) 
 
@@ -97,7 +105,7 @@ v1.0.1b1 (2018/10/8)
 | G1 | TX |
 | G3 | RX |
 | G13 | CLK: KBD1に接続 |
-| G16 | DATA: KBD1に接続 |
+| G16 | DATA: KBD2に接続 |
 
 **ESP32系モジュール**
 
@@ -111,7 +119,7 @@ v1.0.1b1 (2018/10/8)
 | G17 | TX2: IchigoJamのRXと接続 |
 | G16 | RX2: IchigoJamのTXと接続 |
 | G21 | CLK: KBD1に接続 |
-| G22 | DATA: KBD1に接続 |
+| G22 | DATA: KBD2に接続 |
 | G15 | IchigoJam LED信号の入力 |
 | G2 | G15の信号の出力（内蔵LED） |
 
@@ -124,7 +132,7 @@ v1.0.1b1 (2018/10/8)
 | G17 | TX2: IchigoJamのRXと接続 |
 | G16 | RX2: IchigoJamのTXと接続 |
 | G21 | CLK: KBD1に接続 |
-| G22 | DATA: KBD1に接続 |
+| G22 | DATA: KBD2に接続 |
 | G35 | IchigoJam LED信号の入力 |
 | G2 | G35の信号の出力 |
 
@@ -137,9 +145,24 @@ v1.0.1b1 (2018/10/8)
 | G26 | TX2: IchigoJamのRXと接続 |
 | G0 | RX2: IchigoJamのTXと接続 |
 | G33 | CLK: KBD1に接続 |
-| G32 | DATA: KBD1に接続 |
+| G32 | DATA: KBD2に接続 |
 | G36 | IchigoJam LED信号の入力 |
 | G10 | G36の信号の出力（内蔵LED） |
+
+
+**M5Atom Lite / Matrix / Echo**
+
+|GPIO |機能|
+|----------------|-------|
+| G1 | TX:コンピュータと接続 |
+| G3 | RX:コンピュータと接続 |
+| G22 | TX2: IchigoJamのRXと接続 |
+| G19 | RX2: IchigoJamのTXと接続 |
+| G21 | CLK: KBD1に接続 |
+| G25 | DATA: KBD2に接続 |
+| G23 | IchigoJam BTNと接続 |
+| G33 | IchigoJam LEDに接続 |
+
 
 
 ## 注意・免責 
