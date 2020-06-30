@@ -6,6 +6,7 @@ WebServer
  *  CC BY Michio Ono. http://ijutilities.micutil.com
  *  
  *  *Version Information
+ *  2020/ 6/29  ver 1.2.3d3 キーボード信号に関する不具合の修正
  *  2020/ 6/14  ver 1.2.3d2 M5Atom対応版
  *  2020/ 5/29  ver 1.2.3d1 M5Atom対応版(動作未確認版）
  *  2020/ 5/ 4  ver 1.2.2b2 シリアル送信の不具合を修正
@@ -102,8 +103,8 @@ const String ntpServer = "ntp.jst.mfeed.ad.jp";
   //#define isMatrix
   //#define isEcho
   #include <ESPmDNS.h>
-  const int ijLED=33;
-  const int ijBTN=23;
+  const int ijBTN=23;//21,23
+  const int ijLED=33;//25,33
   bool ijBTNPush;
   #define LED_OFF  LOW
   #define LED_ON   HIGH 
@@ -158,7 +159,7 @@ const String ntpServer = "ntp.jst.mfeed.ad.jp";
 MJSerial mjSer;
 //#endif
 
-const String MicJackVer="MicJack-1.2.3b2";
+const String MicJackVer="MicJack-1.2.3b3";
 const String TelloJackVer="TelloJack-1.0.0b1";
 const String MJVer="MixJuice-1.3.0";
 const int sleepTimeSec = 60;
@@ -283,7 +284,7 @@ IPAddress mySoftAPIP;
 #endif
 
 /***************** Keybord Input ***************/
-bool kbdMode=false;
+bool kbdInit=false;
 #define useKbd
 #define detectHostKbd //ホストからの送信データ //
 #ifdef useKbd
@@ -298,8 +299,8 @@ bool kbdMode=false;
   #define KB_CLK      33 // A4  // PS/2 CLK  IchigoJamのKBD1に接続 //21//
   #define KB_DATA     32 // A5  // PS/2 DATA IchigoJamのKBD2に接続 //22//
 #elif defined(ARDUINO_M5Atom_ESP32)
-  #define KB_CLK      21 // A4  // PS/2 CLK  IchigoJamのKBD1に接続 //21//
-  #define KB_DATA     25 // A5  // PS/2 DATA IchigoJamのKBD2に接続 //22//
+  #define KB_CLK      21 // A4  // PS/2 CLK  IchigoJamのKBD1に接続 //21,23//
+  #define KB_DATA     25 // A5  // PS/2 DATA IchigoJamのKBD2に接続 //25,33//
 #elif defined(ARDUINO_ESP8266_MODULE)
   #define KB_CLK      13 // A4  // PS/2 CLK  IchigoJamのKBD1に接続 //21//
   #define KB_DATA     16 // A5  // PS/2 DATA IchigoJamのKBD2に接続 //22//
@@ -414,9 +415,10 @@ bool sendKeyCode(int key) {
 
 #ifdef useKbd
 
-  if(apcbuf.kbd) {
+  if(apcbuf.kbd) { //kbdInit
+    //Serial.println(key,DEC);
+    
     //if(key>0xFF) key=key-0x100;
-
     if(key>255+16) return false;
     
     uint8_t t=ijKeyMap[0][key];//mjSer.println(t);
@@ -627,11 +629,18 @@ void SetAtomLedColor(int xp, int yp, int xs, int ys, int32_t c) {
 }
 
 void MakeAtomColorValue() {
+  //Serial.println(".");
   int32_t gn = (connCol==true)?255:0; gn=(gn<<16);
   int32_t rn = (postCol==true)?255:0; rn=(rn<<8);
   int32_t bn = (getCol==true)?255:0;  //bn;
   atmLedCol=gn+rn+bn;
 
+  //uart or kbd mode & kbd init
+  int32_t umc = (apcbuf.kbd==false||(apcbuf.kbd==true&&kbdInit==false))?255:0; umc=(umc<<16);
+  int32_t kmc = (apcbuf.kbd==true)?255:0; kmc=(kmc<<8);
+  int32_t kmi = (kbdInit==true)?255:0;
+  SetAtomLedColor(1,0,1,1,umc+kmc+kmi);
+  
   const int32_t bkc=0x20;
   SetAtomLedColor(2,0,1,1,max(gn,bkc<<16));//Connect
   SetAtomLedColor(4,0,1,1,max(rn,bkc<<8));//Push
@@ -659,7 +668,9 @@ void atomPostLED(bool onoff) {
 }
 
 void IchigoJamAtomLED() {
-  MakeAtomColorValue();
+  bool prevLED=ijLEDStatus;
+  ijLEDStatus=(digitalRead(ijLED)==LED_ON);
+  if(prevLED!=ijLEDStatus) MakeAtomColorValue();
 }
 #endif //ARDUINO_M5Atom_ESP32
 
@@ -677,7 +688,7 @@ void setup() {
     M5.begin();
   #elif defined(ARDUINO_M5Atom_ESP32)
     //begin(bool SerialEnable , bool I2CEnable , bool DisplayEnable ) 
-    M5.begin(true,true,true);
+    M5.begin(true,false,true); //Wire.begin(25,21,10000);
     //M5.begin(true,true,true);
   #endif
 
@@ -700,12 +711,19 @@ void setup() {
   #ifdef ARDUINO_ESP8266_MODULE
     printToSub=false;
   #endif
-  
-  #if defined(CARDKB_ADDR) || defined(JOY_ADDR) || defined(FACES_ADDR)
-    Wire.begin();
-  #endif 
 
- //mjSer.begin(74880);
+  #if defined(CARDKB_ADDR) || defined(JOY_ADDR) || defined(FACES_ADDR)
+    #if defined(ARDUINO_M5Atom_ESP32)
+      Wire.begin(26,32);
+    #elif defined(ARDUINO_M5StickC_ESP32)
+      Wire.begin(32,33);
+    #else
+      //M5Stack Grove A SCL SDA / 22  21
+      Wire.begin();
+    #endif
+  #endif
+  
+  //mjSer.begin(74880);
   /*
   mjSer.begin(115200);
   while (!mjSer) { ; }
@@ -755,8 +773,8 @@ void setup() {
   #endif
   
   #if defined(CARDKB_ADDR) || defined(JOY_ADDR)
-  pinMode(5, INPUT);
-  digitalWrite(5, HIGH);
+  //pinMode(5, INPUT);
+  //digitalWrite(5, HIGH);
   #endif
 
   #if defined(FACES_ADDR)
@@ -792,8 +810,7 @@ void setup() {
     mjSer.println("");
   }
 */
-
-  
+ 
   /* Soft APモード開始 */
   softApStart();
 
@@ -817,41 +834,38 @@ void setup() {
     OTAStart();
   #endif
 
-#ifdef useKbd
-/*  mjSer.println("'Low or High");
-  digitalWrite(KB_CLK,LOW);digitalWrite(KB_DATA,LOW);
-  for(int i=0;i<3;i++) {
-    if(digitalRead(KB_CLK)==HIGH) mjSer.println("'1HIGH"); else mjSer.println("'1LOW"); 
-    if(digitalRead(KB_DATA)==HIGH) mjSer.println("'2HIGH"); else mjSer.println("'2LOW"); 
-  }
-*/
-  //trueでも意味がない
-  apcbuf.useHostKbdCmd=false;
-  
-  if(apcbuf.useHostKbdCmd) {
-    MJ_HOSTKBDCMD(apcbuf.useHostKbdCmd);
-    
-    uint32_t tm = millis();  
-    while(keyboard.write(0xAA)!=0)
-    {
-      if ( millis() > tm+1000) {
-          apcbuf.kbd=false;
-          break;
+  //===================
+  //キーボード接続に関して
+  #ifdef useKbd
+    /* 現在の入力モード */
+    MJ_KBD(apcbuf.kbd);
+    apcbuf.useHostKbdCmd=true;//常にtrue
+    kbdInit=false;
+    /*
+    if(apcbuf.kbd) {
+      //if apcbuf.kbd is on, useHostKbdCmd is on, too.
+      //MJ_HOSTKBDCMD(apcbuf.useHostKbdCmd);
+      unsigned char ck;  // ホストからの送信データ
+      if( (digitalRead(KB_CLK)==LOW) || (digitalRead(KB_DATA) == LOW)) {
+        while(keyboard.read(&ck)) ;
+        keyboardcommand(ck);
+        kbdInit=true;
       }
     }
-  }
+    */
+    
+  #else
+    //Keyboardモードを使わない場合
+    apcbuf.kbd=false;
+    kbdInit=false;
   
-  /* 現在の入力モード */
-  //apcbuf.kbd=false;
-  MJ_KBD(apcbuf.kbd); 
-  
-#else
-  //Keyboardモードを使わない場合
-  apcbuf.kbd=false;
-  
-#endif
+  #endif //useKbd
 
+
+  //===================
   #ifdef ARDUINO_M5Atom_ESP32
+  /*
+  mjSer.print("'");
   if (M5.IMU.Init() != 0) {
       IMU6886Flag = false;
       mjSer.println("'IMU6886 failure...");
@@ -859,7 +873,8 @@ void setup() {
       IMU6886Flag = true;
       mjSer.println("'IMU6886 enabled...");
   }
-
+  */
+  
   xTaskCreatePinnedToCore(
                     netAccLedLoop,     /* Function to implement the task */
                     "netAccLedLoop",   /* Name of the task */
@@ -868,12 +883,19 @@ void setup() {
                     1,         /* Priority of the task */
                     NULL,      /* Task handle. */
                     1);        /* Core where the task should run */
+
+  //LED
+  MakeAtomColorValue();
+
   #endif
 
+  //===================
   //Serial.println(UDP_PACKET_SIZE,DEC);
   mjSer.println("'Ready to go!");
+  mjSer.println("'");
   mjSer.println("");
-  
+
+
 }
 
 /************************************
@@ -972,7 +994,7 @@ void getKeyData(int kb_add) {
       }
       //Serial.println(c,HEX);
       #ifdef useKbd
-      if(kbdMode) {
+      if(kbdInit) {//apcbuf.kbd
         sendKeyCode(c);
       } else {
         mjSer.print(c);
@@ -1050,17 +1072,22 @@ void loop() {
   #endif
 
   #ifdef useKbd
-    #ifdef detectHostKbd
+  #ifdef detectHostKbd
     if(apcbuf.kbd) {
       if(apcbuf.useHostKbdCmd) {
         unsigned char ck;  // ホストからの送信データ
         if( (digitalRead(KB_CLK)==LOW) || (digitalRead(KB_DATA) == LOW)) {
           while(keyboard.read(&ck)) ;
           keyboardcommand(ck);
+          kbdInit=true;
+          #ifdef ARDUINO_M5Atom_ESP32
+            MakeAtomColorValue();
+          #endif
+          //Serial.println("Keybord Inited!");
         }
       }
     }
-    #endif
+  #endif
   #endif  
   
   while (mjMain.available()) {
@@ -1171,8 +1198,7 @@ void loop() {
   // LEDのピンを読み取ってM5StickCのLEDを点灯
   #ifndef ARDUINO_ESP8266_MODULE
     #ifdef ARDUINO_M5Atom_ESP32
-      ijLEDStatus=(digitalRead(ijLED)==LED_ON);
-      IchigoJamAtomLED();
+     IchigoJamAtomLED();
     #else
       digitalWrite(espLED, (digitalRead(ijLED)==LED_ON));
     #endif
@@ -2711,11 +2737,15 @@ void MJ_KBD(bool m) {
     apcbuf.kbd=m;
     SaveAPConfig();
   }
-  
+
   if(m)
     mjSer.println("'Keyboard Mode");
   else
     mjSer.println("'UART Mode");
+
+  #ifdef ARDUINO_M5Atom_ESP32
+    MakeAtomColorValue();
+  #endif
 }
 
 /***************************************
@@ -2933,7 +2963,7 @@ bool handleFileRead(String path){
       ijc.replace("%3Cbr%3E","\n");
       
     #ifdef useKbd
-      if(kbdMode) {        
+      if(apcbuf.kbd) { //kbdInit
         if(ijc.startsWith("CLS")) {
           sendKeyCode(0x101);
         } else if(ijc.startsWith("LOAD")) {
@@ -3049,7 +3079,7 @@ void MJ_UDP_ReadPacket() {
     //mjSer.print("'");
     for (int i=0; i<rlen; i++){
       #ifdef useKbd
-        if(kbdMode) {
+        if(apcbuf.kbd) { //kbdInit
           sendKeyCode(packetBuffer[i]);
         } else {
           mjSer.print(packetBuffer[i]);
