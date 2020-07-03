@@ -6,6 +6,7 @@ WebServer
  *  CC BY Michio Ono. http://ijutilities.micutil.com
  *  
  *  *Version Information
+ *  2020/ 7/ 3  ver 1.2.3d4 キーボード信号に関する不具合の修正（再）
  *  2020/ 6/29  ver 1.2.3d3 キーボード信号に関する不具合の修正
  *  2020/ 6/14  ver 1.2.3d2 M5Atom対応版
  *  2020/ 5/29  ver 1.2.3d1 M5Atom対応版(動作未確認版）
@@ -159,7 +160,7 @@ const String ntpServer = "ntp.jst.mfeed.ad.jp";
 MJSerial mjSer;
 //#endif
 
-const String MicJackVer="MicJack-1.2.3b3";
+const String MicJackVer="MicJack-1.2.3b4";
 const String TelloJackVer="TelloJack-1.0.0b1";
 const String MJVer="MixJuice-1.3.0";
 const int sleepTimeSec = 60;
@@ -354,6 +355,7 @@ int keyboardcommand(int command) {
   //mjSer.println(command);
   unsigned char val;
   uint32_t tm;
+  //Serial.print("Kbd cmd: ");Serial.println(command,HEX);
   switch (command) {
   case 0xFF:
     ack();// Reset: キーボードリセットコマンド。正しく受け取った場合ACKを返す。
@@ -408,14 +410,14 @@ void breakKeyCode(uint8_t c) {
   keyboard.write(0xF0);
   keyboard.write(c);
 }
-
+ 
 #endif //useKbd
 
 bool sendKeyCode(int key) {
 
 #ifdef useKbd
 
-  if(apcbuf.kbd) { //kbdInit
+  if(kbdInit) { //apcbuf.kbd
     //Serial.println(key,DEC);
     
     //if(key>0xFF) key=key-0x100;
@@ -683,6 +685,27 @@ void IchigoJamAtomLED() {
  ************************************/
  
 void setup() {
+
+  //------------------------
+  //Load setting
+  LoadAPConfig(); 
+  //------------------------
+  /*
+  #ifdef useKbd
+  //Keyboard 
+  if(apcbuf.kbd) {
+    unsigned char ck;  // ホストからの送信データ
+    if( (digitalRead(KB_CLK)==LOW) || (digitalRead(KB_DATA) == LOW)) {
+      if(keyboard.read(&ck)==0) {//while(keyboard.read(&ck)) ; //
+        if(ck==0xFF) {
+          keyboardcommand(ck);
+          kbdInit=true;
+        }
+      }
+    }
+  }
+  #endif
+  */
   
   #if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
     M5.begin();
@@ -782,7 +805,7 @@ void setup() {
   #endif
 
   //Load setting
-  LoadAPConfig();
+  //LoadAPConfig();
 
   //Set WiFi to station mode
   WiFi.mode(WIFI_AP_STA);//WIFI_AP_STA, WIFI_STA
@@ -838,21 +861,8 @@ void setup() {
   //キーボード接続に関して
   #ifdef useKbd
     /* 現在の入力モード */
-    MJ_KBD(apcbuf.kbd);
-    apcbuf.useHostKbdCmd=true;//常にtrue
-    kbdInit=false;
-    /*
-    if(apcbuf.kbd) {
-      //if apcbuf.kbd is on, useHostKbdCmd is on, too.
-      //MJ_HOSTKBDCMD(apcbuf.useHostKbdCmd);
-      unsigned char ck;  // ホストからの送信データ
-      if( (digitalRead(KB_CLK)==LOW) || (digitalRead(KB_DATA) == LOW)) {
-        while(keyboard.read(&ck)) ;
-        keyboardcommand(ck);
-        kbdInit=true;
-      }
-    }
-    */
+    //MJ_KBD(apcbuf.kbd);
+    //kbdInit=false;
     
   #else
     //Keyboardモードを使わない場合
@@ -861,6 +871,17 @@ void setup() {
   
   #endif //useKbd
 
+  if(apcbuf.kbd) {
+    mjSer.print("'Keyboard Mode");
+    if(!kbdInit) mjSer.print(" (no active!)");
+    mjSer.println("");
+  } else {
+    mjSer.println("'UART Mode");
+  }
+  
+  #ifdef ARDUINO_M5Atom_ESP32
+    MakeAtomColorValue();
+  #endif
 
   //===================
   #ifdef ARDUINO_M5Atom_ESP32
@@ -1071,24 +1092,23 @@ void loop() {
     ArduinoOTA.handle();
   #endif
 
-  #ifdef useKbd
-  #ifdef detectHostKbd
-    if(apcbuf.kbd) {
-      if(apcbuf.useHostKbdCmd) {
-        unsigned char ck;  // ホストからの送信データ
-        if( (digitalRead(KB_CLK)==LOW) || (digitalRead(KB_DATA) == LOW)) {
-          while(keyboard.read(&ck)) ;
-          keyboardcommand(ck);
-          kbdInit=true;
-          #ifdef ARDUINO_M5Atom_ESP32
-            MakeAtomColorValue();
-          #endif
-          //Serial.println("Keybord Inited!");
+  #ifdef useKbd//#ifdef detectHostKbd
+    if(apcbuf.kbd) {//if(apcbuf.useHostKbdCmd) {
+      unsigned char ck;  // ホストからの送信データ
+      if( (digitalRead(KB_CLK)==LOW) || (digitalRead(KB_DATA) == LOW)) {
+        if(keyboard.read(&ck)==0) { //while(keyboard.read(&ck)) ;
+          if(ck==0xFF) {
+            keyboardcommand(ck);
+            //if(!kbdInit) mjSer.println("'Kbd input was activated!");
+            kbdInit=true;
+            #ifdef ARDUINO_M5Atom_ESP32
+              MakeAtomColorValue();
+            #endif
+          }
         }
       }
     }
-  #endif
-  #endif  
+  #endif//#endif
   
   while (mjMain.available()) {
     if(postmode&&posttype==HTML_POST_QUEST) {
@@ -2963,7 +2983,7 @@ bool handleFileRead(String path){
       ijc.replace("%3Cbr%3E","\n");
       
     #ifdef useKbd
-      if(apcbuf.kbd) { //kbdInit
+      if(kbdInit) { //apcbuf.kbd
         if(ijc.startsWith("CLS")) {
           sendKeyCode(0x101);
         } else if(ijc.startsWith("LOAD")) {
@@ -3079,7 +3099,7 @@ void MJ_UDP_ReadPacket() {
     //mjSer.print("'");
     for (int i=0; i<rlen; i++){
       #ifdef useKbd
-        if(apcbuf.kbd) { //kbdInit
+        if(kbdInit) { //apcbuf.kbd
           sendKeyCode(packetBuffer[i]);
         } else {
           mjSer.print(packetBuffer[i]);
