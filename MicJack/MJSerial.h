@@ -9,7 +9,7 @@ extern bool printToSub;
   #define mjMain  Serial2 //Default RX=GPIO16, TX=GPIO17
   #define mjSub   Serial  //Default RX=GPIO3,  TX=GPIO1
   
-#elif defined(ARDUINO_M5Stack_Core_ESP32)
+#elif defined(ARDUINO_M5Stack_ESP32)
   #include<M5Stack.h>
   #define mjMain Serial2 //Default RX=GPIO16, TX=GPIO17
   #define mjSub  Serial  //Default RX=GPIO3,  TX=GPIO1
@@ -17,6 +17,12 @@ extern bool printToSub;
   
 #elif defined(ARDUINO_M5StickC_ESP32)
   #include<M5StickC.h>
+  #define mjMain  Serial2 //Default RX=GPIO16, TX=GPIO17
+  #define mjSub  Serial  //Default RX=GPIO3,  TX=GPIO1
+  #define mjLcd  M5.Lcd
+
+#elif defined(ARDUINO_M5StickC_PLUS_ESP32)
+  #include "M5StickCPlus.h"
   #define mjMain  Serial2 //Default RX=GPIO16, TX=GPIO17
   #define mjSub  Serial  //Default RX=GPIO3,  TX=GPIO1
   #define mjLcd  M5.Lcd
@@ -33,7 +39,7 @@ extern bool printToSub;
   
 #endif
 
-#if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+#if defined(ARDUINO_M5Stack_ESP32) || defined(ARDUINO_M5StickC_ESP32) || defined(ARDUINO_M5StickC_PLUS_ESP32)
 void InitStatusLED();
 void ConnectStatusLED(bool b, String addr="");
 void PostStatusLED(bool b, String addr="");
@@ -41,10 +47,10 @@ void GetStatusLED(bool b, String addr="");
 void DrawStatusLED();
 #endif
 
-#if defined(ARDUINO_M5Stack_Core_ESP32)
+#if defined(ARDUINO_M5Stack_ESP32)
 void tft_terminal_setup(bool chg);
 void tft_terminal_print(const char *s, int n);
-#endif //defined(ARDUINO_M5Stack_Core_ESP32)
+#endif //defined(ARDUINO_M5Stack_ESP32)
 
 enum {
   k2M,
@@ -56,10 +62,10 @@ class MJSerial {
   public:
   MJSerial() {
   
-    #if defined(ARDUINO_ESP32_MODULE) || defined(ARDUINO_M5Stack_Core_ESP32) //ARDUINO_ARCH_ESP32
+    #if defined(ARDUINO_ESP32_MODULE) || defined(ARDUINO_M5Stack_ESP32) //ARDUINO_ARCH_ESP32
       mjMain.begin(115200); while (!mjMain) { ; }
       mjSub.begin(115200); while (!mjSub) { ; }
-    #elif defined(ARDUINO_M5StickC_ESP32)
+    #elif defined(ARDUINO_M5StickC_ESP32) || defined(ARDUINO_M5StickC_PLUS_ESP32)
       //mjMain.begin(115200, SERIAL_8N1, 0, 26); // EXT_IO
       //while (!mjMain) { ; }
       //mjSub.begin(115200);
@@ -75,14 +81,14 @@ class MJSerial {
   void print(String s) {//, int type=k2B) {
     mjMain.print(s);//if(type<k2S) mjMain.print(s);
     if(printToSub) mjSub.print(s);//if(type>k2M&&printToSub) mjSub.print(s);
-    #ifdef ARDUINO_M5Stack_Core_ESP32
+    #ifdef ARDUINO_M5Stack_ESP32
     tft_terminal_print(s.c_str(),s.length());
     #endif
   }
   void println(String s) {//, int type=k2B) {
     mjMain.println(s);//if(type<k2S) mjMain.println(s);
     if(printToSub) mjSub.println(s);//if(type>k2M&&printToSub) mjSub.println(s);
-    #ifdef ARDUINO_M5Stack_Core_ESP32
+    #ifdef ARDUINO_M5Stack_ESP32
     s=s+String("\n");
     tft_terminal_print(s.c_str(),s.length());
     #endif
@@ -90,14 +96,14 @@ class MJSerial {
   void print(char* s) {//, int type=k2B) {
     mjMain.print(s);//if(type<k2S) mjMain.print(s);
     if(printToSub) mjSub.print(s);//if(type>k2M&&printToSub) mjSub.print(s);
-    #ifdef ARDUINO_M5Stack_Core_ESP32
+    #ifdef ARDUINO_M5Stack_ESP32
     tft_terminal_print(s,strlen(s));
     #endif
   }
   void println(char* s) {//, int type=k2B) {
     mjMain.println(s);//if(type<k2S) mjMain.println(s);
     if(printToSub) mjSub.println(s);//if(type>k2M&&printToSub) mjSub.println(s);
-    #ifdef ARDUINO_M5Stack_Core_ESP32
+    #ifdef ARDUINO_M5Stack_ESP32
     char c[128];for(int i=0;i<128;i++) c[i]=0;
     int n=sprintf(c,"%s\n",s);
     tft_terminal_print(c,n);
@@ -106,7 +112,7 @@ class MJSerial {
   void print(char s) {//, int type=k2B) {
     mjMain.print(s);//if(type<k2S) mjMain.print(s);
     if(printToSub) mjSub.print(s);//if(type>k2M&&printToSub) mjSub.print(s);
-    #ifdef ARDUINO_M5Stack_Core_ESP32
+    #ifdef ARDUINO_M5Stack_ESP32
     String t=String(s);
     tft_terminal_print(t.c_str(),t.length());
     #endif 
@@ -114,7 +120,7 @@ class MJSerial {
   void println(char s) {//, int type=k2B) {
     mjMain.println(s);//if(type<k2S) mjMain.println(s);
     if(printToSub) mjSub.println(s);//if(type>k2M&&printToSub) mjSub.println(s);
-    #ifdef ARDUINO_M5Stack_Core_ESP32
+    #ifdef ARDUINO_M5Stack_ESP32
     String t=String(s)+String("\n");
     tft_terminal_print(t.c_str(),t.length());//mjLcd.println(s);
     #endif
@@ -123,7 +129,7 @@ class MJSerial {
     //void printf(const char * format, ...) {
     mjMain.printf(format, filename, filesize);
     if(printToSub) mjSub.printf(format, filename, filesize);
-    #ifdef ARDUINO_M5Stack_Core_ESP32
+    #ifdef ARDUINO_M5Stack_ESP32
     char c[128];for(int i=0;i<128;i++) c[i]=0;
     int n=sprintf(c, format, filename, filesize);
     tft_terminal_print(c,n);
@@ -132,7 +138,7 @@ class MJSerial {
   void println(IPAddress s) {//, int type=k2B) {
     mjMain.println(s);//if(type<k2S) mjMain.println(s);
     if(printToSub) mjSub.println(s);//if(type>k2M&&printToSub) mjSub.println(s);
-    #ifdef ARDUINO_M5Stack_Core_ESP32
+    #ifdef ARDUINO_M5Stack_ESP32
     char c[128];for(int i=0;i<128;i++) c[i]=0;
     int n=sprintf(c, "%d.%d.%d.%d\n",s[0],s[1],s[2],s[3]);
     tft_terminal_print(c,n);

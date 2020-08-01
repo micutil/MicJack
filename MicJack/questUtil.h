@@ -6,7 +6,7 @@
 #ifndef questUtil_h
 #define questUtil_h
 
-#include "Arduino.h"
+#include <Arduino.h>
 
 struct questCmd {
   uint8_t id;

@@ -1,20 +1,22 @@
 #include "MJBoard.h"
 #include "MJSerial.h"
 
-#if defined(ARDUINO_M5Stack_Core_ESP32)
+#if defined(ARDUINO_M5Stack_ESP32)
   #include <M5Stack.h>
   extern fs::SDFS qbFS;
-  #define YMAX 240 // Bottom of screen area
-  #define XMAX 320
 
 #elif defined(ARDUINO_M5StickC_ESP32)
   #include <M5StickC.h>
   extern fs::SPIFFSFS qbFS;
-  #define YMAX 80 // Bottom of screen area
-  #define XMAX 160
+  
+#elif defined(ARDUINO_M5StickC_PLUS_ESP32)
+  #include "M5StickCPlus.h"
+  #include <SPIFFS.h>
+  extern fs::SPIFFSFS qbFS;
+
 #endif
 
-#if defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+#if defined(ARDUINO_M5Stack_ESP32) || defined(ARDUINO_M5StickC_ESP32) || defined(ARDUINO_M5StickC_PLUS_ESP32)
 
 //======================================
 // Connect status LED
@@ -31,24 +33,33 @@ void InitStatusLED() {
 void ConnectStatusLED(bool b, String addr) {
   statusLED[1]=b;
   DrawStatusLED();
-  #if defined(ARDUINO_M5StickC_ESP32)
-  M5.Lcd.fillRect(30,2,180,16,TFT_BLACK);//16,13
-  if(b) { M5.Lcd.setCursor(30,10); M5.Lcd.print(addr); }
+  #if defined(ARDUINO_M5StickC_ESP32)||defined(ARDUINO_M5StickC_PLUS_ESP32)
+  M5.Lcd.fillRect(30,2,DWidth,16,TFT_BLACK);//16,13
+  if(b) {
+    #if defined(ARDUINO_M5StickC_PLUS_ESP32)
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.setCursor(30,6);
+    #else
+    M5.Lcd.setCursor(30,10);
+    #endif
+    M5.Lcd.print(addr);
+    M5.Lcd.setTextSize(1);
+  }
   #endif
 }
 void PostStatusLED(bool b, String addr) {
   statusLED[2]=b;
   DrawStatusLED();
-  #if defined(ARDUINO_M5StickC_ESP32)
-  M5.Lcd.fillRect(30,29,180,16,TFT_BLACK);//16,40
+  #if defined(ARDUINO_M5StickC_ESP32)||defined(ARDUINO_M5StickC_PLUS_ESP32)
+  M5.Lcd.fillRect(30,29,DWidth,16,TFT_BLACK);//16,40
   if(b) { M5.Lcd.setCursor(30,37); M5.Lcd.print(addr.substring(0,20)); }
   #endif
 }
 void GetStatusLED(bool b, String addr) {
   statusLED[3]=b;
   DrawStatusLED();
-  #if defined(ARDUINO_M5StickC_ESP32)
-  M5.Lcd.fillRect(30,57,180,16,TFT_BLACK);//16,68
+  #if defined(ARDUINO_M5StickC_ESP32)||defined(ARDUINO_M5StickC_PLUS_ESP32)
+  M5.Lcd.fillRect(30,57,DWidth,16,TFT_BLACK);//16,68
   if(b) { M5.Lcd.setCursor(30,65); M5.Lcd.print(addr.substring(0,20)); }
   #endif
 }
@@ -57,70 +68,70 @@ int scrdiff=0;
 void DrawStatusLED() {
   
   //if(statusLED[0]) {
-    #if defined(ARDUINO_M5Stack_Core_ESP32)
+    #if defined(ARDUINO_M5Stack_ESP32)
     M5.Lcd.fillRect(0,scrdiff,7,7,TFT_BLACK);
-    M5.Lcd.fillRect(XMAX-7,scrdiff,7,7,TFT_BLACK);
-    M5.Lcd.fillRoundRect(0,scrdiff,XMAX,27,7,TFT_LIGHTGREY);
-    M5.Lcd.fillRect(0,20+scrdiff,XMAX,7,TFT_LIGHTGREY);
-    #elif defined(ARDUINO_M5StickC_ESP32)
-    //M5.Lcd.fillRoundRect(0,0,XMAX,27,7,TFT_LIGHTGREY);
-    //M5.Lcd.fillRect(0,20,XMAX,7,TFT_LIGHTGREY);
+    M5.Lcd.fillRect(DWidth-7,scrdiff,7,7,TFT_BLACK);
+    M5.Lcd.fillRoundRect(0,scrdiff,DWidth,27,7,TFT_LIGHTGREY);
+    M5.Lcd.fillRect(0,20+scrdiff,DWidth,7,TFT_LIGHTGREY);
+    #elif defined(ARDUINO_M5StickC_ESP32)||defined(ARDUINO_M5StickC_PLUS_ESP32)
+    //M5.Lcd.fillRoundRect(0,0,DWidth,27,7,TFT_LIGHTGREY);
+    //M5.Lcd.fillRect(0,20,DWidth,7,TFT_LIGHTGREY);
     #endif
   //}
   
   if(statusLED[1]) {
-    #if defined(ARDUINO_M5Stack_Core_ESP32)
+    #if defined(ARDUINO_M5Stack_ESP32)
     M5.Lcd.fillCircle(16,13+scrdiff,8,TFT_GREEN);
-    #elif defined(ARDUINO_M5StickC_ESP32)
+    #elif defined(ARDUINO_M5StickC_ESP32)||defined(ARDUINO_M5StickC_PLUS_ESP32)
     M5.Lcd.fillCircle(13,13,8,TFT_GREEN);
     #endif
   } else {
-    #if defined(ARDUINO_M5Stack_Core_ESP32)
+    #if defined(ARDUINO_M5Stack_ESP32)
     M5.Lcd.fillCircle(16,13+scrdiff,8,TFT_DARKGREY);
     M5.Lcd.drawCircle(16,13,8+scrdiff,TFT_GREEN);
-    #elif defined(ARDUINO_M5StickC_ESP32)
+    #elif defined(ARDUINO_M5StickC_ESP32)||defined(ARDUINO_M5StickC_PLUS_ESP32)
     M5.Lcd.fillCircle(13,13,8,TFT_DARKGREY);
     M5.Lcd.drawCircle(13,13,8,TFT_GREEN);
     #endif
   }
 
   if(statusLED[2]) {
-    #if defined(ARDUINO_M5Stack_Core_ESP32)
+    #if defined(ARDUINO_M5Stack_ESP32)
     M5.Lcd.fillCircle(44,13+scrdiff,8,TFT_YELLOW);
-    #elif defined(ARDUINO_M5StickC_ESP32)
+    #elif defined(ARDUINO_M5StickC_ESP32)||defined(ARDUINO_M5StickC_PLUS_ESP32)
     M5.Lcd.fillCircle(13,40,8,TFT_YELLOW);
     #endif
   } else {
-    #if defined(ARDUINO_M5Stack_Core_ESP32)
+    #if defined(ARDUINO_M5Stack_ESP32)
     M5.Lcd.fillCircle(44,13+scrdiff,8,TFT_DARKGREY);
     M5.Lcd.drawCircle(44,13+scrdiff,8,TFT_YELLOW);  
-    #elif defined(ARDUINO_M5StickC_ESP32)
+    #elif defined(ARDUINO_M5StickC_ESP32)||defined(ARDUINO_M5StickC_PLUS_ESP32)
     M5.Lcd.fillCircle(13,40,8,TFT_DARKGREY);
     M5.Lcd.drawCircle(13,40,8,TFT_YELLOW);  
     #endif
   }
 
   if(statusLED[3]) {
-    #if defined(ARDUINO_M5Stack_Core_ESP32)
+    #if defined(ARDUINO_M5Stack_ESP32)
     M5.Lcd.fillCircle(72,13+scrdiff,8,TFT_RED);
-    #elif defined(ARDUINO_M5StickC_ESP32)
+    #elif defined(ARDUINO_M5StickC_ESP32)||defined(ARDUINO_M5StickC_PLUS_ESP32)
     M5.Lcd.fillCircle(13,68,8,TFT_RED);
     #endif
   } else {
-    #if defined(ARDUINO_M5Stack_Core_ESP32)
+    #if defined(ARDUINO_M5Stack_ESP32)
     M5.Lcd.fillCircle(72,13+scrdiff,8,TFT_DARKGREY);
     M5.Lcd.drawCircle(72,13+scrdiff,8,TFT_RED);
-    #elif defined(ARDUINO_M5StickC_ESP32)
+    #elif defined(ARDUINO_M5StickC_ESP32)||defined(ARDUINO_M5StickC_PLUS_ESP32)
     M5.Lcd.fillCircle(13,68,8,TFT_DARKGREY);
     M5.Lcd.drawCircle(13,68,8,TFT_RED);
     #endif
   }
   
 }
-#endif //defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5StickC_ESP32)
+#endif //defined(ARDUINO_M5Stack_ESP32) || defined(ARDUINO_M5StickC_ESP32) || defined(ARDUINO_M5StickC_PLUS_ESP32)
 
 
-#if defined(ARDUINO_M5Stack_Core_ESP32)
+#if defined(ARDUINO_M5Stack_ESP32)
 
 TFT_eSPI tft = TFT_eSPI();  // Invoke library
 
@@ -128,15 +139,15 @@ TFT_eSPI tft = TFT_eSPI();  // Invoke library
 int TEXT_HEIGHT=8;//#define TEXT_HEIGHT 16 // Height of text to be printed and scrolled
 #define TOP_FIXED_AREA 32// TEXT_HEIGHT*2 // Number of lines in top fixed area (lines counted from top of screen)
 #define BOT_FIXED_AREA 0 // Number of lines in bottom fixed area (lines counted from bottom of screen)
-int DspW=TEXT_HEIGHT*32;//#define XMAX 320
+int DspW=TEXT_HEIGHT*32;//#define DWidth 320
 
 // The initial y coordinate of the top of the scrolling area
 uint16_t yStart = 0;//TOP_FIXED_AREA;//0;
 // yArea must be a integral multiple of TEXT_HEIGHT
-uint16_t yArea = YMAX-TOP_FIXED_AREA-BOT_FIXED_AREA;
+uint16_t yArea = DHeight-TOP_FIXED_AREA-BOT_FIXED_AREA;
 // The initial y coordinate of the top of the bottom text line
 
-uint16_t yDraw = TOP_FIXED_AREA;//0;//YMAX - BOT_FIXED_AREA - TEXT_HEIGHT; //
+uint16_t yDraw = TOP_FIXED_AREA;//0;//DHeight - BOT_FIXED_AREA - TEXT_HEIGHT; //
 //uint16_t yDraw = 0;
 
 // Keep track of the drawing x coordinate
@@ -158,9 +169,9 @@ uint16_t xPos = 0;
 // Setup the vertical scrolling start address pointer
 // ##############################################################################################
 void scrollAddress(uint16_t vsp) {
-  #if defined(ARDUINO_M5Stack_Core_ESP32)
+  #if defined(ARDUINO_M5Stack_ESP32)
   tft.writecommand(ILI9341_VSCRSADD); // Vertical scrolling pointer
-  #elif defined(ARDUINO_M5StickC_ESP32)
+  #elif defined(ARDUINO_M5StickC_ESP32)||defined(ARDUINO_M5StickC_PLUS_ESP32)
   tft.writecommand(ST7735_VSCRDEF); // Vertical scrolling pointer
   #endif
   tft.writedata(vsp>>8);
@@ -175,7 +186,7 @@ bool inisc=false;
 int scroll_line() {
   
   if(inisc==false) {
-    if(yDraw+TEXT_HEIGHT>=YMAX) {
+    if(yDraw+TEXT_HEIGHT>=DHeight) {
       inisc=true;
     } else {
       scrdiff=0;
@@ -191,8 +202,8 @@ int scroll_line() {
   // Change the top of the scroll area
   yStart+=TEXT_HEIGHT;
   // The value must wrap around as the screen memory is a circular buffer
-  if (yStart >= YMAX - BOT_FIXED_AREA) yStart = TOP_FIXED_AREA + (yStart - YMAX + BOT_FIXED_AREA);
-  //if (yStart >= YMAX) yStart = TOP_FIXED_AREA;//0;
+  if (yStart >= DHeight - BOT_FIXED_AREA) yStart = TOP_FIXED_AREA + (yStart - DHeight + BOT_FIXED_AREA);
+  //if (yStart >= DHeight) yStart = TOP_FIXED_AREA;//0;
   // Now we can scroll the display
   scrollAddress(yStart);
   scrdiff=yStart;
@@ -204,15 +215,15 @@ int scroll_line() {
 // ##############################################################################################
 // We are using a hardware feature of the display, so we can only scroll in portrait orientation
 void setupScrollArea(uint16_t tfa, uint16_t bfa) {
-  #if defined(ARDUINO_M5Stack_Core_ESP32)
+  #if defined(ARDUINO_M5Stack_ESP32)
   tft.writecommand(ILI9341_VSCRSADD); // Vertical scrolling pointer
-  #elif defined(ARDUINO_M5StickC_ESP32)
+  #elif defined(ARDUINO_M5StickC_ESP32)||defined(ARDUINO_M5StickC_PLUS_ESP32)
   tft.writecommand(ST7735_VSCRDEF); // Vertical scrolling pointer
   #endif
   tft.writedata(tfa >> 8);           // Top Fixed Area line count
   tft.writedata(tfa);
-  tft.writedata((YMAX-tfa-bfa)>>8);  // Vertical Scrolling Area line count
-  tft.writedata(YMAX-tfa-bfa);
+  tft.writedata((DHeight-tfa-bfa)>>8);  // Vertical Scrolling Area line count
+  tft.writedata(DHeight-tfa-bfa);
   tft.writedata(bfa >> 8);           // Bottom Fixed Area line count
   tft.writedata(bfa);
 }
@@ -305,7 +316,7 @@ void tft_terminal_print(const char *s, int n) {
       yDraw = scroll_line();
       tft.setCursor(xPos,yDraw);
       DrawStatusLED();
-    } else if(xPos>XMAX-TEXT_HEIGHT && xPos<=31*TEXT_HEIGHT) {
+    } else if(xPos>DWidth-TEXT_HEIGHT && xPos<=31*TEXT_HEIGHT) {
       xPos+=TEXT_HEIGHT;
     } else { //if(data > 31 && data < 128) {
       if(xPos>31*TEXT_HEIGHT) {
@@ -321,7 +332,7 @@ void tft_terminal_print(const char *s, int n) {
     //change_colour = 1; // Line to indicate buffer is being emptied
   }
 }
-
+/*
 void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
     Serial.printf("Listing directory: %s\n", dirname);
 
@@ -352,5 +363,5 @@ void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
         file = root.openNextFile();
     }
 }
-
-#endif //ARDUINO_M5Stack_Core_ESP32
+*/
+#endif //ARDUINO_M5Stack_ESP32
