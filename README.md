@@ -296,6 +296,6 @@ v1.0.1b1 (2018/10/8)
 
 ## ライセンス
 
-CC BY IchigoJam http://ichigoJam.net 
-CC BY IchigoJam-for-Display-1.2 font http://ijutilities.micutil.com 
-CC BY IchigoLatte-for-Display font http://il.micutil.com 
+CC BY IchigoJam https://ichigoJam.net <br/>
+CC BY IchigoJam-for-Display-1.2 font https://ijutilities.micutil.com <br/>
+CC BY IchigoLatte-for-Display font http://il.micutil.com <br/>
